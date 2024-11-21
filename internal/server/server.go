@@ -51,15 +51,25 @@ func NewServer(port string, historySize uint) (Server, error) {
 	return srv, nil
 }
 
-func (s *Server) NewConnection(conn net.Conn) {
-	user := conn.RemoteAddr().String()
+func (s *Server) AddToLiveConns(user string, conn net.Conn) error {
 	fmt.Printf("New connection - %s\n", user)
-
 	s.rwmu.Lock()
-	s.LiveConns[user] = conn
-	s.rwmu.Unlock()
+	defer s.rwmu.Unlock()
 
-	err := s.SendHistory(conn)
+	if uint(len(s.LiveConns)) >= s.MaxConnectionLimit {
+		return fmt.Errorf("could not connect. Connection limit reached")
+	}
+	s.LiveConns[user] = conn
+	return nil
+}
+
+func (s *Server) NewConnection(conn net.Conn) error {
+	user := conn.RemoteAddr().String()
+	err := s.AddToLiveConns(user, conn)
+	if err != nil {
+		return err
+	}
+	err = s.SendHistory(conn)
 	if err != nil {
 		fmt.Printf("Could not send history to new user (%v): %v", user, err)
 	}
@@ -68,6 +78,16 @@ func (s *Server) NewConnection(conn net.Conn) {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
+	return nil
+}
+
+func (s *Server) DenyConnection(conn net.Conn, errMsg string) {
+	errByte := []byte(errMsg)
+	_, err := conn.Write(errByte)
+	if err != nil {
+		fmt.Println(err)
+	}
+	conn.Close()
 }
 
 func (s *Server) CloseConnection(conn net.Conn) {

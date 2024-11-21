@@ -6,9 +6,9 @@ A simple chat server built in Go.
 
 ## Setup
 Create a .env file in the local root and specify the following:
-    - SRV_PORT (Port for the server to listen on. Must be valid integer)
-    - SRV_MSG_HISTORY_SIZE (Max size of the history buffer. Must be a valid integer)
-    - SRV_MAX_CONNECTIONS (Max number of connections to the server. Must be a valid integer)
+    * SRV_PORT (Port for the server to listen on. Must be valid integer)
+    * SRV_MSG_HISTORY_SIZE (Max size of the history buffer. Must be a valid integer)
+    * SRV_MAX_CONNECTIONS (Max number of connections to the server. Must be a valid integer)
 
 
 ## Running the server

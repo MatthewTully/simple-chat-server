@@ -16,7 +16,7 @@ func NewListener(port string) (net.Listener, error) {
 
 	listener, err := net.Listen(network, addr)
 	if err != nil {
-		return nil, fmt.Errorf("error creating Listener: %v\n", err)
+		return nil, fmt.Errorf("error creating Listener: %v", err)
 	}
 	return listener, nil
 }
@@ -29,7 +29,11 @@ func (s *Server) StartListening() {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		s.NewConnection(conn)
-		go s.AwaitMessage(conn)
+		err = s.NewConnection(conn)
+		if err != nil {
+			s.DenyConnection(conn, err.Error())
+		} else {
+			go s.AwaitMessage(conn)
+		}
 	}
 }
