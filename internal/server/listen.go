@@ -16,7 +16,7 @@ func NewListener(port string) (net.Listener, error) {
 
 	listener, err := net.Listen(network, addr)
 	if err != nil {
-		return nil, fmt.Errorf("error creating Listener: %v", err)
+		return nil, fmt.Errorf("error creating Listener: %v\n", err)
 	}
 	return listener, nil
 }

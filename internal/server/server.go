@@ -4,26 +4,35 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 const (
-	maxSize    = 512
+	maxSize    = 1320
 	maxLogSize = 20
 )
 
 type Server struct {
-	LiveConns  map[string]net.Conn
-	Listener   net.Listener
-	Protocol   Protocol
-	MsgHistory [][]byte
-	rwmu       *sync.RWMutex
+	LiveConns          map[string]net.Conn
+	Listener           net.Listener
+	Protocol           Protocol
+	MsgHistory         [][]byte
+	MaxMsgHistorySize  uint
+	MaxConnectionLimit uint
+	rwmu               *sync.RWMutex
 }
 
 type Protocol struct {
-	MaxSize int
+	PacketNun    uint16
+	TotalPackets uint16
+	MaxSize      uint16
+	DateTime     time.Time
+	Username     [32]byte
+	UserColour   [32]byte
+	Data         [1200]byte
 }
 
-func NewServer(port string) (Server, error) {
+func NewServer(port string, historySize uint) (Server, error) {
 	l, err := NewListener(port)
 	if err != nil {
 		return Server{}, err
@@ -35,8 +44,9 @@ func NewServer(port string) (Server, error) {
 		Protocol: Protocol{
 			MaxSize: maxSize,
 		},
-		MsgHistory: [][]byte{},
-		rwmu:       &sync.RWMutex{},
+		MsgHistory:        [][]byte{},
+		MaxMsgHistorySize: historySize,
+		rwmu:              &sync.RWMutex{},
 	}
 	return srv, nil
 }
@@ -86,7 +96,7 @@ func (s *Server) SendHistory(conn net.Conn) error {
 func (s *Server) AddMsgToHistory(msg []byte) {
 	s.rwmu.Lock()
 	defer s.rwmu.Unlock()
-	if len(s.MsgHistory) >= maxLogSize {
+	if len(s.MsgHistory) >= int(s.MaxMsgHistorySize) {
 		s.MsgHistory = s.MsgHistory[1:]
 
 	}
