@@ -60,13 +60,17 @@ Once connected and listening for connections, the application will enter client 
 
 ### CLI Args
 ```
-    --port int
-        Define the port for the server to listen on
-
-    -p int
-        Define the port for the server to listen on (shorthand)
+  --host      Launch application as a server host.
+  -h          Launch application as a server host (shorthand).
+  
+  --port int  Define the port for the server to listen on
+  -p     int  Define the port for the server to listen on (shorthand)
 ```
 
 
+## Dependences 
+
+Env file loading done byL -  github.com/joho/godotenv v1.5.1
+Client TUI created using  -  github.com/rivo/tview
 
 

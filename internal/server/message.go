@@ -11,7 +11,9 @@ func (s *Server) AwaitMessage(conn net.Conn) {
 	for {
 		nr, err := conn.Read(buf)
 		if err != nil {
-			fmt.Printf("error reading from conn: %v\n", err)
+			if err.Error() != "EOF" {
+				fmt.Printf("error reading from conn: %v\n", err)
+			}
 			return
 		}
 		if nr == 0 {
@@ -19,9 +21,9 @@ func (s *Server) AwaitMessage(conn net.Conn) {
 		}
 
 		data := buf[0:nr]
-		fmt.Printf("Inbound message from %v: %v", conn.RemoteAddr().String(), string(data))
+		//fmt.Printf("Inbound message from %v: %v", conn.RemoteAddr().String(), string(data))
 
-		msg := []byte(fmt.Sprintf("\033[32m%v:\033[0m", conn.RemoteAddr().String()))
+		msg := []byte(fmt.Sprintf("[green]%v ~[white] ", conn.RemoteAddr().String()))
 		msg = append(msg, data...)
 
 		s.BroadcastMessage(conn.RemoteAddr().String(), msg)

@@ -52,7 +52,7 @@ func NewServer(port string, historySize uint) (Server, error) {
 }
 
 func (s *Server) AddToLiveConns(user string, conn net.Conn) error {
-	fmt.Printf("New connection - %s\n", user)
+	//fmt.Printf("New connection - %s\n", user)
 	s.rwmu.Lock()
 	defer s.rwmu.Unlock()
 
@@ -71,7 +71,7 @@ func (s *Server) NewConnection(conn net.Conn) error {
 	}
 	err = s.SendHistory(conn)
 	if err != nil {
-		fmt.Printf("Could not send history to new user (%v): %v", user, err)
+		//fmt.Printf("Could not send history to new user (%v): %v", user, err)
 	}
 	s.BroadcastMessage("", []byte(fmt.Sprintf("User %v has joined the server!\n", user)))
 	err = s.SentMessageToClient(user, []byte("Welcome to the server!\n"))

@@ -23,7 +23,7 @@ func NewListener(port string) (net.Listener, error) {
 
 func (s *Server) StartListening() {
 	fmt.Printf("Server is listening on %v\n", s.Listener.Addr().String())
-
+	defer s.Listener.Close()
 	for {
 		conn, err := s.Listener.Accept()
 		if err != nil {
