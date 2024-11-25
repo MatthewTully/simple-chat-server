@@ -3,6 +3,8 @@ package server
 import (
 	"fmt"
 	"net"
+
+	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
 
 func (s *Server) AwaitMessage(conn net.Conn) {
@@ -69,4 +71,19 @@ func (s *Server) SentMessageToClient(client string, msg []byte) error {
 	}
 	err := SendMessage(user, msg)
 	return err
+}
+
+func (s *Server) ActionMessageType(p encoding.Protocol) error {
+	switch p.MessageType {
+	case encoding.KeepAlive:
+		//update keep alive so user is not disconnected
+	case encoding.Message:
+		//Send send message to connected users
+
+	case encoding.RequestConnect:
+		// set a active connection
+	case encoding.RequestDisconnect:
+		// close connection
+	}
+	return fmt.Errorf("could not determine message type. %v", p.MessageType)
 }

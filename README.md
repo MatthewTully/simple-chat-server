@@ -70,7 +70,7 @@ Once connected and listening for connections, the application will enter client 
 
 ## Dependences 
 
-Env file loading done byL -  github.com/joho/godotenv v1.5.1
+Env file loading done by -  github.com/joho/godotenv v1.5.1
 Client TUI created using  -  github.com/rivo/tview
 
 
