@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-func decodePacket(buffer *bytes.Buffer) Protocol {
+func DecodePacket(buffer *bytes.Buffer) Protocol {
 
 	var packet Protocol
 	dec := gob.NewDecoder(buffer)

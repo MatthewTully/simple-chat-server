@@ -77,6 +77,6 @@ func main() {
 
 	//TODO Remove tmp setup of manual config.
 
-	go cli.AwaitMessage()
+	go cli.ProcessMessage()
 	client.StartTUI(&cli)
 }

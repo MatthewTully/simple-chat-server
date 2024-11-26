@@ -1,35 +1,39 @@
 package server
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
 
-const (
-	maxSize    = 1320
-	maxLogSize = 20
-)
+type UserInfo struct {
+	Username   string
+	UserColour string
+}
+
+type ConnectedUser struct {
+	conn     net.Conn
+	userInfo UserInfo
+}
+
+type serverConfig struct {
+	ServerName string
+}
 
 type Server struct {
-	LiveConns          map[string]net.Conn
+	cfg                *serverConfig
+	LiveConns          map[string]ConnectedUser
 	Listener           net.Listener
-	Protocol           Protocol
 	MsgHistory         [][]byte
 	MaxMsgHistorySize  uint
 	MaxConnectionLimit uint
+	Blacklist          []string
 	rwmu               *sync.RWMutex
-}
-
-type Protocol struct {
-	PacketNun    uint16
-	TotalPackets uint16
-	MaxSize      uint16
-	DateTime     time.Time
-	Username     [32]byte
-	UserColour   [32]byte
-	Data         [1200]byte
 }
 
 func NewServer(port string, historySize uint) (Server, error) {
@@ -38,12 +42,14 @@ func NewServer(port string, historySize uint) (Server, error) {
 		return Server{}, err
 	}
 
+	srvCfg := serverConfig{
+		ServerName: "Chat Server",
+	}
+
 	srv := Server{
-		LiveConns: make(map[string]net.Conn),
-		Listener:  l,
-		Protocol: Protocol{
-			MaxSize: maxSize,
-		},
+		LiveConns:         make(map[string]ConnectedUser),
+		Listener:          l,
+		cfg:               &srvCfg,
 		MsgHistory:        [][]byte{},
 		MaxMsgHistorySize: historySize,
 		rwmu:              &sync.RWMutex{},
@@ -51,7 +57,7 @@ func NewServer(port string, historySize uint) (Server, error) {
 	return srv, nil
 }
 
-func (s *Server) AddToLiveConns(user string, conn net.Conn) error {
+func (s *Server) AddToLiveConns(userKey string, conn ConnectedUser) error {
 	//fmt.Printf("New connection - %s\n", user)
 	s.rwmu.Lock()
 	defer s.rwmu.Unlock()
@@ -59,26 +65,40 @@ func (s *Server) AddToLiveConns(user string, conn net.Conn) error {
 	if uint(len(s.LiveConns)) >= s.MaxConnectionLimit {
 		return fmt.Errorf("could not connect. Connection limit reached")
 	}
-	s.LiveConns[user] = conn
+	s.LiveConns[userKey] = conn
 	return nil
 }
 
-func (s *Server) NewConnection(conn net.Conn) error {
-	user := conn.RemoteAddr().String()
-	err := s.AddToLiveConns(user, conn)
-	if err != nil {
-		return err
+func (s *Server) NewConnection(conn net.Conn, userInfo encoding.Protocol) (ConnectedUser, error) {
+	newUser := ConnectedUser{
+		conn: conn,
+		userInfo: struct {
+			Username   string
+			UserColour string
+		}{
+			Username:   string(userInfo.Username[:userInfo.UsernameSize]),
+			UserColour: string(userInfo.UserColour[:userInfo.UserColourSize]),
+		},
 	}
-	err = s.SendHistory(conn)
+	err := s.AddToLiveConns(newUser.userInfo.Username, newUser)
+	if err != nil {
+		return ConnectedUser{}, err
+	}
+	time.Sleep(time.Millisecond)
+	s.BroadcastActiveUsers()
+	time.Sleep(time.Millisecond)
+	err = s.SendHistory(newUser)
 	if err != nil {
 		//fmt.Printf("Could not send history to new user (%v): %v", user, err)
 	}
-	s.BroadcastMessage("", []byte(fmt.Sprintf("User %v has joined the server!\n", user)))
-	err = s.SentMessageToClient(user, []byte("Welcome to the server!\n"))
+	time.Sleep(time.Millisecond)
+	err = s.SentMessageToClient(newUser.userInfo.Username, []byte("Welcome to the server!\n"))
+	time.Sleep(time.Millisecond)
+	s.ProcessGroupMessage(s.cfg.ServerName, []byte(fmt.Sprintf("User %v has joined the server!\n", newUser.userInfo.Username)))
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	return nil
+	return newUser, nil
 }
 
 func (s *Server) DenyConnection(conn net.Conn, errMsg string) {
@@ -90,21 +110,35 @@ func (s *Server) DenyConnection(conn net.Conn, errMsg string) {
 	conn.Close()
 }
 
-func (s *Server) CloseConnection(conn net.Conn) {
-	user := conn.RemoteAddr().String()
-	s.BroadcastMessage("", []byte(fmt.Sprintf("User %v has left the server!\n", user)))
+func (s *Server) CloseConnection(user ConnectedUser) {
+	s.ProcessGroupMessage(s.cfg.ServerName, []byte(fmt.Sprintf("User %v has left the server!\n", user.userInfo.Username)))
 	s.rwmu.Lock()
-	delete(s.LiveConns, user)
+	delete(s.LiveConns, user.userInfo.Username)
 	s.rwmu.Unlock()
-	conn.Close()
+	user.conn.Close()
 }
 
-func (s *Server) SendHistory(conn net.Conn) error {
+func (s *Server) CloseConnectionForUser(username string) {
+	user, isActiveUser := s.IsActiveUser(username)
+	if !isActiveUser {
+		return
+	}
+	s.CloseConnection(user)
+}
+
+func (s *Server) IsActiveUser(username string) (ConnectedUser, bool) {
+	s.rwmu.RLock()
+	defer s.rwmu.RUnlock()
+	user, exists := s.LiveConns[username]
+	return user, exists
+}
+
+func (s *Server) SendHistory(user ConnectedUser) error {
 	if len(s.MsgHistory) > 0 {
 		s.rwmu.RLock()
 		defer s.rwmu.RUnlock()
 		for _, msg := range s.MsgHistory {
-			err := s.SentMessageToClient(conn.RemoteAddr().String(), msg)
+			err := s.SentMessageToClient(user.userInfo.Username, msg)
 			if err != nil {
 				return err
 			}
@@ -121,4 +155,59 @@ func (s *Server) AddMsgToHistory(msg []byte) {
 
 	}
 	s.MsgHistory = append(s.MsgHistory, msg)
+}
+
+func (s *Server) AwaitHandshake(conn net.Conn) (encoding.Protocol, error) {
+	buf := make([]byte, encoding.MaxPacketSize)
+	for {
+		nr, err := conn.Read(buf)
+		if err != nil {
+			if err.Error() != "EOF" {
+				fmt.Printf("error reading from conn: %v\n", err)
+			}
+			return encoding.Protocol{}, err
+		}
+		if nr == 0 {
+			continue
+		}
+		data := buf[0:nr]
+
+		sd := bytes.Split(data, encoding.HeaderPattern[:])
+		packetLen := binary.BigEndian.Uint16(sd[1][4:])
+		packet := sd[1][encoding.HeaderSize : packetLen+encoding.HeaderSize]
+		buffer := bytes.NewBuffer(packet)
+		dataPacket := encoding.DecodePacket(buffer)
+		if dataPacket.MessageType == encoding.RequestConnect {
+			//TODO at this point can send encryption stuff and any other new connection data to client
+			return dataPacket, nil
+		}
+	}
+}
+
+func (s *Server) GetAllActiveUsers() []UserInfo {
+	s.rwmu.RLock()
+	defer s.rwmu.RUnlock()
+
+	activeUsers := []UserInfo{}
+	for key := range s.LiveConns {
+		activeUsers = append(activeUsers, s.LiveConns[key].userInfo)
+	}
+	return activeUsers
+
+}
+
+func (s *Server) BroadcastActiveUsers() {
+	activeUsrSlice := []byte{}
+	for _, data := range s.GetAllActiveUsers() {
+		usrByteSlice := []byte(fmt.Sprintf("[%s]%v[white];", data.UserColour, data.Username))
+		activeUsrSlice = append(activeUsrSlice, usrByteSlice...)
+	}
+	if len(activeUsrSlice) == 0 {
+		return
+	}
+
+	toSend := encoding.PrepBytesForSending(activeUsrSlice, encoding.ServerActiveUsers, s.cfg.ServerName, "white")
+	fmt.Printf("Total active users is: %v\n", len(s.GetAllActiveUsers()))
+	fmt.Printf("BroadcastActiveUsers: len %v\n", len(toSend))
+	s.BroadcastMessage(s.cfg.ServerName, toSend)
 }

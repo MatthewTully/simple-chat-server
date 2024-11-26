@@ -34,6 +34,7 @@ func initView(c *Client) *tview.Application {
 	app.SetRoot(mainView, true).EnableMouse(true).EnablePaste(true)
 
 	c.chatView = chatLog
+	c.activeUsersView = activeChatters
 
 	return app
 }

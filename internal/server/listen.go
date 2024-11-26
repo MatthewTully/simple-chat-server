@@ -4,6 +4,11 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
 
 const (
@@ -29,11 +34,32 @@ func (s *Server) StartListening() {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		err = s.NewConnection(conn)
-		if err != nil {
-			s.DenyConnection(conn, err.Error())
-		} else {
-			go s.AwaitMessage(conn)
+
+		conIp := strings.Split(conn.RemoteAddr().String(), ":")[0]
+		if slices.Contains(s.Blacklist, conIp) {
+			s.DenyConnection(conn, "cannot connect to server: IP banned")
 		}
+
+		c := make(chan encoding.Protocol, 1)
+		go func() {
+			userInfo, err := s.AwaitHandshake(conn)
+			if err != nil {
+				s.DenyConnection(conn, err.Error())
+			}
+			c <- userInfo
+		}()
+
+		select {
+		case res := <-c:
+			user, err := s.NewConnection(conn, res)
+			if err != nil {
+				s.DenyConnection(conn, err.Error())
+			} else {
+				go s.AwaitMessage(user)
+			}
+		case <-time.After(30 * time.Second):
+			s.DenyConnection(conn, "cannot connect to server: Connection timed out")
+		}
+
 	}
 }

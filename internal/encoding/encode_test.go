@@ -1,8 +1,11 @@
 package encoding
 
 import (
+	"bytes"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -101,4 +104,37 @@ func TestPackageMessageString(t *testing.T) {
 
 		})
 	}
+}
+
+func TestEncodePacket(t *testing.T) {
+	var userNameArr, userColourArr [32]byte
+
+	usernameSlice := []byte("TestUser")
+	userColourSlice := []byte("green")
+	copy(userNameArr[:], usernameSlice)
+	copy(userColourArr[:], userColourSlice)
+
+	dataPacket := Protocol{
+		MessageType:    KeepAlive,
+		DateTime:       time.Now().UTC(),
+		Data:           [MaxMessageSize]byte{},
+		MsgSize:        0,
+		Username:       userNameArr,
+		UsernameSize:   uint16(len(usernameSlice)),
+		UserColour:     userColourArr,
+		UserColourSize: uint16(len(userColourSlice)),
+	}
+	encodedPacket := encodePacket(dataPacket)
+
+	tmp := encodedPacket.Bytes()
+	fmt.Printf("Len of packet: %v\n", len(tmp))
+
+	decodedPacket := DecodePacket(bytes.NewBuffer(tmp))
+	fmt.Printf("Decoded Packet.MessageType: %v\n", decodedPacket.MessageType)
+	fmt.Printf("Decoded Packet.DateTime: %v\n", decodedPacket.DateTime)
+
+	if decodedPacket != dataPacket {
+		t.Errorf("decoded packet does not match original packet. Expected %v, Got %v", dataPacket, decodedPacket)
+	}
+
 }
