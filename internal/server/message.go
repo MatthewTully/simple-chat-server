@@ -29,7 +29,7 @@ func (s *Server) ActionMessageType(p encoding.Protocol) error {
 func (s *Server) ProcessGroupMessage(sentBy string, msg []byte) {
 	s.AddMsgToHistory(msg)
 	toSend := encoding.PrepBytesForSending(msg, encoding.Message, s.cfg.ServerName, "white")
-	fmt.Printf("ProcessGroupMessage: len %v\n", len(toSend))
+	s.cfg.Logger.Printf("ProcessGroupMessage: len %v\n", len(toSend))
 	s.BroadcastMessage(sentBy, toSend)
 }
 
@@ -40,11 +40,11 @@ func (s *Server) AwaitMessage(user ConnectedUser) {
 	var data []byte
 	for {
 		nr, err := user.conn.Read(buf)
-		fmt.Printf("Server: nr=%v\n", nr)
+		s.cfg.Logger.Printf("Server: nr=%v\n", nr)
 		if err != nil {
-			fmt.Printf("Server error\n")
+			s.cfg.Logger.Printf("Server error\n")
 			if err.Error() != "EOF" {
-				fmt.Printf("error reading from conn: %v\n", err)
+				s.cfg.Logger.Printf("error reading from conn: %v\n", err)
 			}
 			return
 		}
@@ -112,7 +112,7 @@ func (s *Server) SentMessageToClient(client string, msg []byte) error {
 
 	toSend := encoding.PrepBytesForSending(msg, encoding.Message, s.cfg.ServerName, "white")
 
-	fmt.Printf("SentMessageToClient: len %v\n", len(toSend))
+	s.cfg.Logger.Printf("SentMessageToClient: len %v\n", len(toSend))
 	err := SendMessage(user.conn, toSend)
 	return err
 }

@@ -13,6 +13,7 @@ Create a `.env` file in the local root and specify the following:
 * SRV_PORT (Port for the server to listen on when hosting. Must be valid integer)
 * SRV_MSG_HISTORY_SIZE (Max size of the history buffer. Must be a valid integer)
 * SRV_MAX_CONNECTIONS (Max number of connections the server will allow. Must be a valid integer)
+* SRV_LOG_OUTPUT (file path for the server logs)
 * USR_CONFIG_PATH (Where the application will store and retrieve the user preferences config (Username etc.), Default is ~/.simple_server_user_config)
 
 Open a terminal in the directory containing the codebase. Build the application using `go build .`. This will create a simple-chat-server file.

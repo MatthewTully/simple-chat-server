@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ type ConnectedUser struct {
 
 type serverConfig struct {
 	ServerName string
+	Logger     *log.Logger
 }
 
 type Server struct {
@@ -36,7 +38,7 @@ type Server struct {
 	rwmu               *sync.RWMutex
 }
 
-func NewServer(port string, historySize uint) (Server, error) {
+func NewServer(port string, historySize uint, logger *log.Logger) (Server, error) {
 	l, err := NewListener(port)
 	if err != nil {
 		return Server{}, err
@@ -44,6 +46,7 @@ func NewServer(port string, historySize uint) (Server, error) {
 
 	srvCfg := serverConfig{
 		ServerName: "Chat Server",
+		Logger:     logger,
 	}
 
 	srv := Server{
@@ -58,7 +61,7 @@ func NewServer(port string, historySize uint) (Server, error) {
 }
 
 func (s *Server) AddToLiveConns(userKey string, conn ConnectedUser) error {
-	//fmt.Printf("New connection - %s\n", user)
+	s.cfg.Logger.Printf("New connection - %s\n", userKey)
 	s.rwmu.Lock()
 	defer s.rwmu.Unlock()
 
@@ -89,14 +92,14 @@ func (s *Server) NewConnection(conn net.Conn, userInfo encoding.Protocol) (Conne
 	time.Sleep(time.Millisecond)
 	err = s.SendHistory(newUser)
 	if err != nil {
-		//fmt.Printf("Could not send history to new user (%v): %v", user, err)
+		s.cfg.Logger.Printf("Could not send history to new user (%v): %v", newUser.userInfo.Username, err)
 	}
 	time.Sleep(time.Millisecond)
 	err = s.SentMessageToClient(newUser.userInfo.Username, []byte("Welcome to the server!\n"))
 	time.Sleep(time.Millisecond)
 	s.ProcessGroupMessage(s.cfg.ServerName, []byte(fmt.Sprintf("User %v has joined the server!\n", newUser.userInfo.Username)))
 	if err != nil {
-		fmt.Println(err.Error())
+		s.cfg.Logger.Println(err.Error())
 	}
 	return newUser, nil
 }
@@ -105,7 +108,7 @@ func (s *Server) DenyConnection(conn net.Conn, errMsg string) {
 	errByte := []byte(errMsg)
 	_, err := conn.Write(errByte)
 	if err != nil {
-		fmt.Println(err)
+		s.cfg.Logger.Println(err)
 	}
 	conn.Close()
 }
@@ -163,7 +166,7 @@ func (s *Server) AwaitHandshake(conn net.Conn) (encoding.Protocol, error) {
 		nr, err := conn.Read(buf)
 		if err != nil {
 			if err.Error() != "EOF" {
-				fmt.Printf("error reading from conn: %v\n", err)
+				s.cfg.Logger.Printf("error reading from conn: %v\n", err)
 			}
 			return encoding.Protocol{}, err
 		}
@@ -207,7 +210,7 @@ func (s *Server) BroadcastActiveUsers() {
 	}
 
 	toSend := encoding.PrepBytesForSending(activeUsrSlice, encoding.ServerActiveUsers, s.cfg.ServerName, "white")
-	fmt.Printf("Total active users is: %v\n", len(s.GetAllActiveUsers()))
-	fmt.Printf("BroadcastActiveUsers: len %v\n", len(toSend))
+	s.cfg.Logger.Printf("Total active users is: %v\n", len(s.GetAllActiveUsers()))
+	s.cfg.Logger.Printf("BroadcastActiveUsers: len %v\n", len(toSend))
 	s.BroadcastMessage(s.cfg.ServerName, toSend)
 }

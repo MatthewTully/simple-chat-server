@@ -1,7 +1,6 @@
 package client
 
 import (
-	"fmt"
 	"os"
 	"strings"
 )
@@ -39,36 +38,36 @@ func getUserCommands() map[string]userCommand {
 
 func connectToServer(c *Client) {
 	srvAddr := c.LastCommand
-	fmt.Printf("Attempting to connect to %v\n", srvAddr)
+	c.cfg.Logger.Printf("Attempting to connect to %v\n", srvAddr)
 	c.Connect(srvAddr)
 }
 
 func disconnectFromServer(c *Client) {
 	conn := c.ActiveConn
 	if conn == nil {
-		fmt.Println("No active connections")
+		c.cfg.Logger.Println("No active connections")
 		return
 	}
-	fmt.Printf("Disconnecting from %v\n", c.ActiveConn.RemoteAddr().String())
+	c.cfg.Logger.Printf("Disconnecting from %v\n", c.ActiveConn.RemoteAddr().String())
 	c.ActiveConn.Close()
-	fmt.Println("Successfully disconnected.")
+	c.cfg.Logger.Println("Successfully disconnected.")
 }
 
 func exitApplication(c *Client) {
-	fmt.Println("Closing any active connections..")
+	c.cfg.Logger.Println("Closing any active connections..")
 	disconnectFromServer(c)
-	fmt.Println("Closing application")
+	c.cfg.Logger.Println("Closing application")
 	os.Exit(0)
 }
 
 func listUserCommands(c *Client) {
 	usrCmdMap := getUserCommands()
-	fmt.Println("\n#------------------------------------------------#")
-	fmt.Printf("Available User commands:\n\n")
+	c.cfg.Logger.Println("\n#------------------------------------------------#")
+	c.cfg.Logger.Printf("Available User commands:\n\n")
 	for _, cmd := range usrCmdMap {
-		fmt.Printf("  %s - %s\n", cmd.name, cmd.description)
+		c.cfg.Logger.Printf("  %s - %s\n", cmd.name, cmd.description)
 	}
-	fmt.Println("#------------------------------------------------#")
+	c.cfg.Logger.Println("#------------------------------------------------#")
 }
 
 func actionInput(c *Client, usrInput string) {
@@ -81,7 +80,7 @@ func actionInput(c *Client, usrInput string) {
 	if strings.HasPrefix(cmd, "\\") {
 		clientCmd, exists := usrCmdMap[cmd]
 		if !exists {
-			//fmt.Printf("\n%s is not a valid user command. Use \\list-user-commands to see available user commands.", cmd)
+			c.cfg.Logger.Printf("\n%s is not a valid user command. Use \\list-user-commands to see available user commands.", cmd)
 			return
 		}
 		c.LastCommand = strings.Join(inputArgs[1:], " ")

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"testing"
 )
@@ -37,7 +38,7 @@ func TestAddMessageToHistory(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, err := NewServer("8144", uint(tc.setLimit))
+			srv, err := NewServer("8144", uint(tc.setLimit), &log.Logger{})
 			srv.Listener.Close()
 			if err != nil {
 				t.Errorf("error declaring srv for test case %v, error: %v", tc.name, err)
@@ -94,7 +95,7 @@ func TestConnectionLimits(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, err := NewServer("8144", 10)
+			srv, err := NewServer("8144", 10, &log.Logger{})
 			srv.MaxConnectionLimit = tc.connectionLimit
 			if err != nil {
 				t.Errorf("error declaring srv for test case %v, error: %v", tc.name, err)

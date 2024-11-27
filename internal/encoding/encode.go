@@ -9,7 +9,6 @@ import (
 )
 
 func encodePacket(packet Protocol) *bytes.Buffer {
-	fmt.Println("starting encode.")
 	buf := bytes.NewBuffer(make([]byte, 0, unsafe.Sizeof(packet)))
 	enc := gob.NewEncoder(buf)
 
@@ -17,7 +16,6 @@ func encodePacket(packet Protocol) *bytes.Buffer {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println("finished encode.")
 	return buf
 
 }
