@@ -1,8 +1,6 @@
 package server
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"net"
 
@@ -26,6 +24,23 @@ func (s *Server) ActionMessageType(p encoding.Protocol) error {
 	return fmt.Errorf("could not determine message type. %v", p.MessageType)
 }
 
+func (s *Server) ActionMessageTypeMultiMessage(p encoding.Protocol, data []byte) error {
+	switch p.MessageType {
+	case encoding.KeepAlive:
+		//update keep alive so user is not disconnected
+	case encoding.Message:
+		sentBy := string(p.Username[:p.UsernameSize])
+		msg := []byte(fmt.Sprintf("[%s]%v ~[white] ", string(p.UserColour[:p.UserColourSize]), sentBy))
+		msg = append(msg, data...)
+		s.ProcessGroupMessage(sentBy, msg)
+	case encoding.WhisperMessage:
+		//Sent to user
+	case encoding.RequestDisconnect:
+		s.CloseConnectionForUser(string(p.Username[:p.UsernameSize]))
+	}
+	return fmt.Errorf("could not determine message type. %v", p.MessageType)
+}
+
 func (s *Server) ProcessGroupMessage(sentBy string, msg []byte) {
 	s.AddMsgToHistory(msg)
 	toSend := encoding.PrepBytesForSending(msg, encoding.Message, s.cfg.ServerName, "white")
@@ -35,12 +50,19 @@ func (s *Server) ProcessGroupMessage(sentBy string, msg []byte) {
 
 func (s *Server) AwaitMessage(user ConnectedUser) {
 	defer s.CloseConnection(user)
-	buf := make([]byte, encoding.MaxPacketSize)
-	var overFlow []byte
-	var data []byte
 	for {
+		buf := make([]byte, encoding.MaxPacketSize)
+		var data []byte
+
 		nr, err := user.conn.Read(buf)
 		s.cfg.Logger.Printf("Server: nr=%v\n", nr)
+
+		data = buf[0:nr]
+
+		if nr == 0 {
+			return
+		}
+
 		if err != nil {
 			s.cfg.Logger.Printf("Server error\n")
 			if err.Error() != "EOF" {
@@ -48,28 +70,7 @@ func (s *Server) AwaitMessage(user ConnectedUser) {
 			}
 			return
 		}
-		if nr == 0 {
-			return
-		}
-		if len(overFlow) > 0 {
-			data = append(overFlow, buf[0:nr]...)
-		} else {
-			data = buf[0:nr]
-		}
-		packetNum := binary.BigEndian.Uint16(data[0:])
-		numPackets := binary.BigEndian.Uint16(data[2:])
-		packetLen := binary.BigEndian.Uint16(data[4:])
-
-		packet := data[encoding.HeaderSize : packetLen+encoding.HeaderSize]
-		if (packetLen + encoding.HeaderSize) > uint16(nr) {
-			overFlow = data[packetLen+encoding.HeaderSize:]
-		}
-
-		buffer := bytes.NewBuffer(packet)
-		dataPacket := encoding.DecodePacket(buffer)
-		if packetNum == numPackets {
-			s.ActionMessageType(dataPacket)
-		}
+		user.processChannel <- data
 
 	}
 }
@@ -107,7 +108,7 @@ func (s *Server) SentMessageToClient(client string, msg []byte) error {
 	defer s.rwmu.RUnlock()
 	user, ok := s.LiveConns[client]
 	if !ok {
-		return fmt.Errorf("failed to sent to user %s: User does not exist", user)
+		return fmt.Errorf("failed to sent to user %s: User does not exist", user.userInfo.Username)
 	}
 
 	toSend := encoding.PrepBytesForSending(msg, encoding.Message, s.cfg.ServerName, "white")

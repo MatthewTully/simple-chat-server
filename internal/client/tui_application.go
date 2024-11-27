@@ -23,9 +23,26 @@ func initView(c *Client) *tview.Application {
 	textBox.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			input := textBox.GetText()
+			c.LastCommand = input
 			actionInput(c, input+"\n")
 			textBox.SetText("")
 		}
+	})
+
+	textBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Modifiers() == tcell.ModCtrl {
+			if event.Key() == tcell.KeyEnter {
+				textBox.SetText(textBox.GetText() + "\n")
+				return nil
+			}
+		}
+		if event.Key() == tcell.KeyUp {
+			if c.LastCommand != textBox.GetText() {
+				textBox.SetText(c.LastCommand)
+			}
+			return nil
+		}
+		return event
 	})
 
 	chatter_flex := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(chatLog, 0, 1, false).AddItem(textBox, 3, 1, true)
@@ -73,14 +90,5 @@ func createMsgBoxView() *tview.InputField {
 
 	txtBox.SetBorderPadding(0, 0, 1, 1)
 
-	txtBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Modifiers() == tcell.ModCtrl {
-			if event.Key() == tcell.KeyEnter {
-				txtBox.SetText(txtBox.GetText() + "\n")
-				return nil
-			}
-		}
-		return event
-	})
 	return txtBox
 }

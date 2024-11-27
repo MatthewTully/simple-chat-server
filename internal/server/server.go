@@ -7,20 +7,9 @@ import (
 	"log"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
-
-type UserInfo struct {
-	Username   string
-	UserColour string
-}
-
-type ConnectedUser struct {
-	conn     net.Conn
-	userInfo UserInfo
-}
 
 type serverConfig struct {
 	ServerName string
@@ -68,6 +57,11 @@ func (s *Server) AddToLiveConns(userKey string, conn ConnectedUser) error {
 	if uint(len(s.LiveConns)) >= s.MaxConnectionLimit {
 		return fmt.Errorf("could not connect. Connection limit reached")
 	}
+	_, exists := s.LiveConns[userKey]
+	if exists {
+		return fmt.Errorf("a user with same username is already connected")
+	}
+
 	s.LiveConns[userKey] = conn
 	return nil
 }
@@ -82,21 +76,18 @@ func (s *Server) NewConnection(conn net.Conn, userInfo encoding.Protocol) (Conne
 			Username:   string(userInfo.Username[:userInfo.UsernameSize]),
 			UserColour: string(userInfo.UserColour[:userInfo.UserColourSize]),
 		},
+		multiMessages: make(map[int]encoding.Protocol),
 	}
 	err := s.AddToLiveConns(newUser.userInfo.Username, newUser)
 	if err != nil {
 		return ConnectedUser{}, err
 	}
-	time.Sleep(time.Millisecond)
 	s.BroadcastActiveUsers()
-	time.Sleep(time.Millisecond)
 	err = s.SendHistory(newUser)
 	if err != nil {
 		s.cfg.Logger.Printf("Could not send history to new user (%v): %v", newUser.userInfo.Username, err)
 	}
-	time.Sleep(time.Millisecond)
 	err = s.SentMessageToClient(newUser.userInfo.Username, []byte("Welcome to the server!\n"))
-	time.Sleep(time.Millisecond)
 	s.ProcessGroupMessage(s.cfg.ServerName, []byte(fmt.Sprintf("User %v has joined the server!\n", newUser.userInfo.Username)))
 	if err != nil {
 		s.cfg.Logger.Println(err.Error())
@@ -106,7 +97,8 @@ func (s *Server) NewConnection(conn net.Conn, userInfo encoding.Protocol) (Conne
 
 func (s *Server) DenyConnection(conn net.Conn, errMsg string) {
 	errByte := []byte(errMsg)
-	_, err := conn.Write(errByte)
+	toSend := encoding.PrepBytesForSending(errByte, encoding.ErrorMessage, s.cfg.ServerName, "white")
+	_, err := conn.Write(toSend)
 	if err != nil {
 		s.cfg.Logger.Println(err)
 	}

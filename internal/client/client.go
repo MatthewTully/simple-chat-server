@@ -26,11 +26,13 @@ type Client struct {
 	TUI             *tview.Application
 	chatView        *tview.TextView
 	activeUsersView *tview.TextView
+	multiMessages   map[int]encoding.Protocol
 }
 
 func NewClient(cfg *ClientConfig) Client {
 	return Client{
-		cfg: cfg,
+		cfg:           cfg,
+		multiMessages: make(map[int]encoding.Protocol),
 	}
 }
 
@@ -53,17 +55,43 @@ func (c *Client) Connect(srvAddr string) error {
 func (c *Client) ActionMessageType(p encoding.Protocol) {
 	switch p.MessageType {
 	case encoding.Message:
-		c.cfg.Logger.Printf("Message type received: Message")
+		c.cfg.Logger.Printf("Message type received: Message\n")
 		c.chatView.Write(p.Data[:p.MsgSize])
+	case encoding.ErrorMessage:
+		c.cfg.Logger.Printf("Message type received: Error Message\n")
+		msg := []byte("[red]Error: ")
+		msg = append(msg, p.Data[:p.MsgSize]...)
+		msg = append(msg, []byte("[white]")...)
+		c.chatView.Write(msg)
 	case encoding.ServerActiveUsers:
-		c.cfg.Logger.Printf("Message type received: Active Users")
+		c.cfg.Logger.Printf("Message type received: Active Users\n")
 		c.activeUsersView.Clear()
 		activeUsr := strings.Split(string(p.Data[:p.MsgSize]), ";")
-		for _, data := range activeUsr {
-			c.activeUsersView.Write([]byte(data + "\n"))
+		for _, usr := range activeUsr {
+			c.activeUsersView.Write([]byte(usr + "\n"))
 		}
 	}
+}
 
+func (c *Client) ActionMessageTypeMultiMessage(p encoding.Protocol, data []byte) {
+	switch p.MessageType {
+	case encoding.Message:
+		c.cfg.Logger.Printf("Message type received: Message\n")
+		c.chatView.Write(data)
+	case encoding.ErrorMessage:
+		c.cfg.Logger.Printf("Message type received: Error Message\n")
+		msg := []byte("[red]Error: ")
+		msg = append(msg, data...)
+		msg = append(msg, []byte("[white]")...)
+		c.chatView.Write(msg)
+	case encoding.ServerActiveUsers:
+		c.cfg.Logger.Printf("Message type received: Active Users\n")
+		c.activeUsersView.Clear()
+		activeUsr := strings.Split(string(data), ";")
+		for _, usr := range activeUsr {
+			c.activeUsersView.Write([]byte(usr + "\n"))
+		}
+	}
 }
 
 func (c *Client) SendHandshake(conn net.Conn) error {
@@ -85,50 +113,80 @@ func (c *Client) ProcessMessage() {
 	for {
 		buf := <-c.processChannel
 		nr := len(buf)
+		c.cfg.Logger.Printf("Client: in chan, Buf read = %v\n", buf)
 		if len(overFlow) > 0 {
 			c.cfg.Logger.Printf("Client: Using overflow\n")
 			data = append(overFlow, buf[0:nr]...)
 			overFlow = []byte{}
+			c.cfg.Logger.Printf("Client: data with overflow and buf = %v\n", data)
 		} else {
 			data = buf[0:nr]
 		}
 
 		sd := bytes.Split(data, encoding.HeaderPattern[:])
 
-		for i, packets := range sd {
-			c.cfg.Logger.Printf("%v: %v\n", i, packets)
+		for i, p := range sd {
+			c.cfg.Logger.Printf("%v: %v\n", i, p)
 			switch {
-			case i == 0 && len(packets) > 0:
-				//overFlow = append(overFlow, encoding.HeaderPattern[:]...)
-				c.cfg.Logger.Printf("Client: add to overflow\n")
-				overFlow = append(overFlow, packets...)
+			case i == 0 && len(p) > 0:
+				c.cfg.Logger.Println("Client: tail end of the previous message. add to overflow")
+				overFlow = append(overFlow, p...)
 				continue
 			case i == 1:
-				c.cfg.Logger.Printf("Client: decode header\n")
-				packetNum := binary.BigEndian.Uint16(packets[0:])
-				numPackets := binary.BigEndian.Uint16(packets[2:])
-				packetLen := binary.BigEndian.Uint16(packets[4:])
-				if len(packets) > int(packetLen) {
-					packets = append(packets, overFlow...)
-					c.cfg.Logger.Printf("new packets: %v", packets)
+				if len(p) < encoding.HeaderSize {
+					c.cfg.Logger.Printf("Client: packet is not the full message. add to overflow\n")
+					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
+					overFlow = append(overFlow, p...)
+					continue
 				}
-				packet := packets[encoding.HeaderSize : packetLen+encoding.HeaderSize]
+				c.cfg.Logger.Printf("Client: decode header\n")
+				packetNum := binary.BigEndian.Uint16(p[0:])
+				numPackets := binary.BigEndian.Uint16(p[2:])
+				packetLen := binary.BigEndian.Uint16(p[4:])
+
+				if len(p) < int(packetLen) {
+					c.cfg.Logger.Printf("Client: packet is not the full message. add to overflow\n")
+					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
+					overFlow = append(overFlow, p...)
+					continue
+				}
+				packet := p[encoding.HeaderSize : packetLen+encoding.HeaderSize]
 
 				if (packetLen + encoding.HeaderSize) > uint16(nr) {
-					c.cfg.Logger.Printf("add remaining bytes to overflow for next read: %v\n", packets[packetLen+encoding.HeaderSize:])
-					overFlow = packets[packetLen+encoding.HeaderSize:]
+					c.cfg.Logger.Printf("Client: add remaining bytes to overflow for next read: %v\n", p[packetLen+encoding.HeaderSize:])
+					overFlow = p[packetLen+encoding.HeaderSize:]
+					overFlow = append(overFlow, p[packetLen+encoding.HeaderSize:]...)
 				}
 
 				buffer := bytes.NewBuffer(packet)
 				dataPacket := encoding.DecodePacket(buffer)
-				if packetNum == numPackets {
+				if numPackets == 1 {
 					c.ActionMessageType(dataPacket)
+				} else {
+					c.multiMessages[int(packetNum)] = dataPacket
+					if len(c.multiMessages) == int(numPackets) {
+						newProtocol := encoding.Protocol{}
+						mergedData := []byte{}
+						for i := 1; i <= int(numPackets); i++ {
+							msg := c.multiMessages[i]
+							if i == 1 {
+								newProtocol.MessageType = msg.MessageType
+								newProtocol.Username = msg.Username
+								newProtocol.UsernameSize = msg.UsernameSize
+								newProtocol.UserColour = msg.UserColour
+								newProtocol.DateTime = msg.DateTime
+							}
+							mergedData = append(mergedData, msg.Data[:msg.MsgSize]...)
+						}
+						c.multiMessages = make(map[int]encoding.Protocol)
+						c.ActionMessageTypeMultiMessage(newProtocol, mergedData)
+					}
 				}
 				continue
 			case i > 1:
-				c.cfg.Logger.Printf("add extra bytes to overflow for next read: %v\n", packets[:])
+				c.cfg.Logger.Printf("Client: add extra bytes to overflow for next read: %v\n", p[:])
 				overFlow = append(overFlow, encoding.HeaderPattern[:]...)
-				overFlow = append(overFlow, packets...)
+				overFlow = append(overFlow, p...)
 				continue
 			default:
 				continue
@@ -140,26 +198,29 @@ func (c *Client) ProcessMessage() {
 }
 
 func (c *Client) AwaitMessage() {
-	buf := make([]byte, encoding.MaxPacketSize)
-	var data []byte
 	for {
+		buf := make([]byte, encoding.MaxPacketSize)
+		var data []byte
 		conn := c.ActiveConn
 		if conn == nil {
 			continue
 		}
 
-		nr, err := conn.Read(buf)
+		c.cfg.Logger.Printf("Client: Buff before read=%v\n", buf)
+		nr, err := conn.Read(buf[:])
+		c.cfg.Logger.Printf("Client: nr=%v\n", nr)
+		data = buf[0:nr]
+		if nr == 0 {
+			return
+		}
+
 		if err != nil {
 			if !strings.Contains(err.Error(), "closed network connection") {
 				c.cfg.Logger.Printf("Client: error reading from conn: %v\n", err)
 			}
 			return
 		}
-		if nr == 0 {
-			return
-		}
-		c.cfg.Logger.Printf("Client: nr=%v\n", nr)
-		data = buf[0:nr]
+		c.cfg.Logger.Printf("Client: data read from conn=%v\n", data)
 		c.processChannel <- data
 
 	}

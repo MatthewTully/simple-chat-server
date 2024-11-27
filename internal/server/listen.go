@@ -55,7 +55,7 @@ func (s *Server) StartListening() {
 			if err != nil {
 				s.DenyConnection(conn, err.Error())
 			} else {
-				go s.AwaitMessage(user)
+				go user.ProcessMessage(s)
 			}
 		case <-time.After(30 * time.Second):
 			s.DenyConnection(conn, "cannot connect to server: Connection timed out")

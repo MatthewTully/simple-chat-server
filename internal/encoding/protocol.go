@@ -17,6 +17,7 @@ const (
 	KeepAlive
 	WhisperMessage
 	ServerActiveUsers
+	ErrorMessage
 )
 
 var HeaderPattern = [...]byte{0, 0, 27, 0, 5, 19, 93, 255, 255, 255}
