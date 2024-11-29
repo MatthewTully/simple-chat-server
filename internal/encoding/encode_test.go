@@ -114,7 +114,7 @@ func TestEncodePacket(t *testing.T) {
 	copy(userNameArr[:], usernameSlice)
 	copy(userColourArr[:], userColourSlice)
 
-	dataPacket := Protocol{
+	dataPacket := MsgProtocol{
 		MessageType:    KeepAlive,
 		DateTime:       time.Now().UTC(),
 		Data:           [MaxMessageSize]byte{},
@@ -124,12 +124,15 @@ func TestEncodePacket(t *testing.T) {
 		UserColour:     userColourArr,
 		UserColourSize: uint16(len(userColourSlice)),
 	}
-	encodedPacket := encodePacket(dataPacket)
+	encodedPacket, err := encodePacket(dataPacket)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
 
 	tmp := encodedPacket.Bytes()
 	fmt.Printf("Len of packet: %v\n", len(tmp))
 
-	decodedPacket := DecodePacket(bytes.NewBuffer(tmp))
+	decodedPacket := DecodeMsgPacket(bytes.NewBuffer(tmp))
 	fmt.Printf("Decoded Packet.MessageType: %v\n", decodedPacket.MessageType)
 	fmt.Printf("Decoded Packet.DateTime: %v\n", decodedPacket.DateTime)
 

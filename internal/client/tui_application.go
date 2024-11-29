@@ -1,6 +1,8 @@
 package client
 
 import (
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -43,6 +45,31 @@ func initView(c *Client) *tview.Application {
 			return nil
 		}
 		return event
+	})
+
+	textBox.SetAutocompleteFunc(func(currentText string) (entries []string) {
+		if len(currentText) == 0 {
+			return
+		}
+		if !strings.HasPrefix(currentText, "\\") {
+			return
+		}
+		for key := range getUserCommands() {
+			if strings.HasPrefix(strings.ToLower(key), strings.ToLower(currentText)) {
+				entries = append(entries, key)
+			}
+		}
+		if len(entries) <= 1 {
+			entries = nil
+		}
+		return
+	})
+
+	textBox.SetAutocompletedFunc(func(text string, index, source int) bool {
+		if source != tview.AutocompletedNavigate {
+			textBox.SetText(text)
+		}
+		return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
 	})
 
 	chatter_flex := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(chatLog, 0, 1, false).AddItem(textBox, 3, 1, true)

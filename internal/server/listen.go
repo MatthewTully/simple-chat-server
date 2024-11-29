@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MatthewTully/simple-chat-server/internal/crypto"
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
 
@@ -40,18 +41,58 @@ func (s *Server) StartListening() {
 			s.DenyConnection(conn, "cannot connect to server: IP banned")
 		}
 
-		c := make(chan encoding.Protocol, 1)
+		c := make(chan ConnectedUser, 1)
 		go func() {
-			userInfo, err := s.AwaitHandshake(conn)
+			cliPub, err := s.AwaitHandshake(conn)
+			if err != nil {
+				s.DenyConnection(conn, err.Error())
+				return
+			}
+			key, err := crypto.BytesToRSAPublicKey(cliPub.Data[:cliPub.MsgSize])
+			if err != nil {
+				s.DenyConnection(conn, err.Error())
+				return
+			}
+
+			err = s.SendHandshakeResponse(conn)
+			if err != nil {
+				s.DenyConnection(conn, err.Error())
+				return
+			}
+
+			cliAES, err := s.AwaitClientAESKey(conn, key)
+			if err != nil {
+				s.DenyConnection(conn, err.Error())
+				return
+			}
+
+			err = s.SendAESKey(conn, key)
+			if err != nil {
+				s.DenyConnection(conn, err.Error())
+				return
+			}
+			newUser := ConnectedUser{
+				conn: conn,
+				userInfo: struct {
+					Username   string
+					UserColour string
+				}{
+					Username:   string(cliPub.Username[:cliPub.UsernameSize]),
+					UserColour: string(cliPub.UserColour[:cliPub.UserColourSize]),
+				},
+				publicKey:     key,
+				AESKey:        cliAES,
+				multiMessages: make(map[int]encoding.MsgProtocol),
+			}
 			if err != nil {
 				s.DenyConnection(conn, err.Error())
 			}
-			c <- userInfo
+			c <- newUser
 		}()
 
 		select {
 		case res := <-c:
-			user, err := s.NewConnection(conn, res)
+			user, err := s.NewConnection(res)
 			if err != nil {
 				s.DenyConnection(conn, err.Error())
 			} else {

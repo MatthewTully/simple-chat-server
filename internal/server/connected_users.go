@@ -2,9 +2,11 @@ package server
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"encoding/binary"
 	"net"
 
+	"github.com/MatthewTully/simple-chat-server/internal/crypto"
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
 
@@ -16,8 +18,10 @@ type UserInfo struct {
 type ConnectedUser struct {
 	conn           net.Conn
 	userInfo       UserInfo
-	multiMessages  map[int]encoding.Protocol
+	multiMessages  map[int]encoding.MsgProtocol
 	processChannel chan []byte
+	publicKey      *rsa.PublicKey
+	AESKey         []byte
 }
 
 func (cu *ConnectedUser) ProcessMessage(s *Server) {
@@ -48,39 +52,55 @@ func (cu *ConnectedUser) ProcessMessage(s *Server) {
 				overFlow = append(overFlow, p...)
 				continue
 			case i == 1:
-				if len(p) < encoding.HeaderSize {
+				if len(p) < encoding.AESEncryptHeaderSize {
 					s.cfg.Logger.Printf("Server: packet is not the full message. add to overflow\n")
 					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 					overFlow = append(overFlow, p...)
 					continue
 				}
 				s.cfg.Logger.Printf("Server: decode header\n")
-				packetNum := binary.BigEndian.Uint16(p[0:])
-				numPackets := binary.BigEndian.Uint16(p[2:])
-				packetLen := binary.BigEndian.Uint16(p[4:])
 
-				if len(p) < int(packetLen) {
+				payloadSize := binary.BigEndian.Uint16(p[0:])
+
+				if len(p) < int(payloadSize) {
 					s.cfg.Logger.Printf("Server: packet is not the full message. add to overflow\n")
 					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 					overFlow = append(overFlow, p...)
 					continue
 				}
-				packet := p[encoding.HeaderSize : packetLen+encoding.HeaderSize]
+				payload := p[encoding.AESEncryptHeaderSize : payloadSize+encoding.AESEncryptHeaderSize]
 
-				if (packetLen + encoding.HeaderSize) > uint16(nr) {
-					s.cfg.Logger.Printf("Server: add remaining bytes to overflow for next read: %v\n", p[packetLen+encoding.HeaderSize:])
-					overFlow = p[packetLen+encoding.HeaderSize:]
-					overFlow = append(overFlow, p[packetLen+encoding.HeaderSize:]...)
+				if (payloadSize + encoding.AESEncryptHeaderSize) > uint16(nr) {
+					s.cfg.Logger.Printf("Server: add remaining bytes to overflow for next read: %v\n", p[payloadSize+encoding.AESEncryptHeaderSize:])
+					overFlow = p[payloadSize+encoding.AESEncryptHeaderSize:]
+					overFlow = append(overFlow, p[payloadSize+encoding.AESEncryptHeaderSize:]...)
 				}
 
+				decPayload, err := crypto.AESDecrypt(payload, cu.AESKey)
+				if err != nil {
+					s.cfg.Logger.Printf("Server: error Decrypting payload: %v", err)
+					continue
+				}
+
+				packetNum := binary.BigEndian.Uint16(decPayload[0:])
+				numPackets := binary.BigEndian.Uint16(decPayload[2:])
+				packetLen := binary.BigEndian.Uint16(decPayload[4:])
+
+				if len(decPayload) < int(packetLen) {
+					s.cfg.Logger.Printf("Server: error, decrypted payload is not the full message")
+					continue
+				}
+
+				packet := decPayload[encoding.HeaderSize : packetLen+encoding.HeaderSize]
+
 				buffer := bytes.NewBuffer(packet)
-				dataPacket := encoding.DecodePacket(buffer)
+				dataPacket := encoding.DecodeMsgPacket(buffer)
 				if numPackets == 1 {
 					s.ActionMessageType(dataPacket)
 				} else {
 					cu.multiMessages[int(packetNum)] = dataPacket
 					if len(cu.multiMessages) == int(numPackets) {
-						newProtocol := encoding.Protocol{}
+						newProtocol := encoding.MsgProtocol{}
 						mergedData := []byte{}
 						for i := 1; i <= int(numPackets); i++ {
 							msg := cu.multiMessages[i]
@@ -89,11 +109,12 @@ func (cu *ConnectedUser) ProcessMessage(s *Server) {
 								newProtocol.Username = msg.Username
 								newProtocol.UsernameSize = msg.UsernameSize
 								newProtocol.UserColour = msg.UserColour
+								newProtocol.UserColourSize = msg.UserColourSize
 								newProtocol.DateTime = msg.DateTime
 							}
 							mergedData = append(mergedData, msg.Data[:msg.MsgSize]...)
 						}
-						cu.multiMessages = make(map[int]encoding.Protocol)
+						cu.multiMessages = make(map[int]encoding.MsgProtocol)
 						s.ActionMessageTypeMultiMessage(newProtocol, mergedData)
 					}
 				}

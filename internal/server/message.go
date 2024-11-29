@@ -7,7 +7,7 @@ import (
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
 
-func (s *Server) ActionMessageType(p encoding.Protocol) error {
+func (s *Server) ActionMessageType(p encoding.MsgProtocol) error {
 	switch p.MessageType {
 	case encoding.KeepAlive:
 		//update keep alive so user is not disconnected
@@ -24,7 +24,7 @@ func (s *Server) ActionMessageType(p encoding.Protocol) error {
 	return fmt.Errorf("could not determine message type. %v", p.MessageType)
 }
 
-func (s *Server) ActionMessageTypeMultiMessage(p encoding.Protocol, data []byte) error {
+func (s *Server) ActionMessageTypeMultiMessage(p encoding.MsgProtocol, data []byte) error {
 	switch p.MessageType {
 	case encoding.KeepAlive:
 		//update keep alive so user is not disconnected
@@ -43,7 +43,10 @@ func (s *Server) ActionMessageTypeMultiMessage(p encoding.Protocol, data []byte)
 
 func (s *Server) ProcessGroupMessage(sentBy string, msg []byte) {
 	s.AddMsgToHistory(msg)
-	toSend := encoding.PrepBytesForSending(msg, encoding.Message, s.cfg.ServerName, "white")
+	toSend, err := encoding.PrepBytesForSending(msg, encoding.Message, s.cfg.ServerName, "white", s.cfg.AESKey)
+	if err != nil {
+		s.cfg.Logger.Printf("error creating packet to send: %v", err)
+	}
 	s.cfg.Logger.Printf("ProcessGroupMessage: len %v\n", len(toSend))
 	s.BroadcastMessage(sentBy, toSend)
 }
@@ -111,9 +114,12 @@ func (s *Server) SentMessageToClient(client string, msg []byte) error {
 		return fmt.Errorf("failed to sent to user %s: User does not exist", user.userInfo.Username)
 	}
 
-	toSend := encoding.PrepBytesForSending(msg, encoding.Message, s.cfg.ServerName, "white")
+	toSend, err := encoding.PrepBytesForSending(msg, encoding.Message, s.cfg.ServerName, "white", s.cfg.AESKey)
+	if err != nil {
+		return fmt.Errorf("error creating packet to send: %v", err)
+	}
 
 	s.cfg.Logger.Printf("SentMessageToClient: len %v\n", len(toSend))
-	err := SendMessage(user.conn, toSend)
+	err = SendMessage(user.conn, toSend)
 	return err
 }

@@ -3,17 +3,30 @@ package encoding
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
+	"log"
 )
 
-func DecodePacket(buffer *bytes.Buffer) Protocol {
+func DecodeMsgPacket(buffer *bytes.Buffer) MsgProtocol {
 
-	var packet Protocol
+	var packet MsgProtocol
 	dec := gob.NewDecoder(buffer)
 
 	err := dec.Decode(&packet)
 	if err != nil {
-		fmt.Println(err)
+		log.Print(err)
+	}
+	return packet
+
+}
+
+func DecodeAESPacket(buffer *bytes.Buffer) AESProtocol {
+
+	var packet AESProtocol
+	dec := gob.NewDecoder(buffer)
+
+	err := dec.Decode(&packet)
+	if err != nil {
+		log.Print(err)
 	}
 	return packet
 

@@ -2,37 +2,59 @@ package client
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
 	"strings"
 
+	"github.com/MatthewTully/simple-chat-server/internal/crypto"
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 	"github.com/rivo/tview"
 )
 
 type ClientConfig struct {
-	Username   string `json:"username"`
-	UserColour string `json:"user_colour"`
-	Logger     *log.Logger
+	Username     string `json:"username"`
+	UserColour   string `json:"user_colour"`
+	Logger       *log.Logger
+	RSAKeyPair   crypto.RSAKeys
+	ClientAESKey []byte
 }
 
 type Client struct {
 	cfg             *ClientConfig
 	ActiveConn      net.Conn
+	ServerAESKey    []byte
+	ServerPubKey    *rsa.PublicKey
 	processChannel  chan []byte
 	LastCommand     string
 	TUI             *tview.Application
 	chatView        *tview.TextView
 	activeUsersView *tview.TextView
-	multiMessages   map[int]encoding.Protocol
+	multiMessages   map[int]encoding.MsgProtocol
+	userCmdArg      string
 }
 
 func NewClient(cfg *ClientConfig) Client {
+	priv, pub, err := crypto.GenerateRSAKeyPair()
+	if err != nil {
+		cfg.Logger.Fatalf("could not generate key RSA pair for client: %v", err)
+	}
+	cfg.RSAKeyPair = crypto.RSAKeys{
+		PrivateKey: priv,
+		PublicKey:  pub,
+	}
+
+	aesKey, err := crypto.GenerateAESSecretKey()
+	if err != nil {
+		cfg.Logger.Fatalf("could not generate AES key for client: %v", err)
+	}
+	cfg.ClientAESKey = aesKey
+
 	return Client{
 		cfg:           cfg,
-		multiMessages: make(map[int]encoding.Protocol),
+		multiMessages: make(map[int]encoding.MsgProtocol),
 	}
 }
 
@@ -48,11 +70,36 @@ func (c *Client) Connect(srvAddr string) error {
 		conn.Close()
 		return err
 	}
+	res, err := c.AwaitHandshakeResponse(conn)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	key, err := crypto.BytesToRSAPublicKey(res.Data[:res.MsgSize])
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	c.ServerPubKey = key
+
+	err = c.SendAESKey(conn)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+
+	aes, err := c.AwaitServerKey(conn)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	c.ServerAESKey = aes
 	c.ActiveConn = conn
+	go c.ProcessMessage()
 	return nil
 }
 
-func (c *Client) ActionMessageType(p encoding.Protocol) {
+func (c *Client) ActionMessageType(p encoding.MsgProtocol) {
 	switch p.MessageType {
 	case encoding.Message:
 		c.cfg.Logger.Printf("Message type received: Message\n")
@@ -73,7 +120,7 @@ func (c *Client) ActionMessageType(p encoding.Protocol) {
 	}
 }
 
-func (c *Client) ActionMessageTypeMultiMessage(p encoding.Protocol, data []byte) {
+func (c *Client) ActionMessageTypeMultiMessage(p encoding.MsgProtocol, data []byte) {
 	switch p.MessageType {
 	case encoding.Message:
 		c.cfg.Logger.Printf("Message type received: Message\n")
@@ -95,9 +142,32 @@ func (c *Client) ActionMessageTypeMultiMessage(p encoding.Protocol, data []byte)
 }
 
 func (c *Client) SendHandshake(conn net.Conn) error {
-	handshake := encoding.PrepBytesForSending([]byte{}, encoding.RequestConnect, c.cfg.Username, c.cfg.UserColour)
+	pubKeyBytes, err := crypto.RSAPublicKeyToBytes(c.cfg.RSAKeyPair.PublicKey)
+	if err != nil {
+		c.cfg.Logger.Printf("Client: %v", err)
+		return err
+	}
+	handshake, err := encoding.PrepHandshakeForSending(pubKeyBytes, c.cfg.Username, c.cfg.UserColour)
+	if err != nil {
+		return fmt.Errorf("error creating packet to send: %v", err)
+	}
 	c.cfg.Logger.Printf("SendHandshake: len %v\n", len(handshake))
-	_, err := conn.Write(handshake)
+	_, err = conn.Write(handshake)
+	if err != nil {
+		c.cfg.Logger.Printf("Client: failed to send to server %s: %v\n", conn.RemoteAddr().String(), err)
+		return fmt.Errorf("failed to send to server %s: %v", conn.RemoteAddr().String(), err)
+	}
+	return nil
+}
+
+func (c *Client) SendAESKey(conn net.Conn) error {
+	packet, err := encoding.PrepAESForSending(c.cfg.ClientAESKey, c.ServerPubKey, c.cfg.RSAKeyPair)
+	if err != nil {
+		return fmt.Errorf("failed to prepare AES Packet to send to server %s: %v", c.ActiveConn.RemoteAddr().String(), err)
+	}
+	c.cfg.Logger.Printf("SendAESKey: len %v\n", len(packet))
+	c.cfg.Logger.Printf("SendAESKey: packet %v\n", packet)
+	_, err = conn.Write(packet)
 	if err != nil {
 		c.cfg.Logger.Printf("Client: failed to send to server %s: %v\n", conn.RemoteAddr().String(), err)
 		return fmt.Errorf("failed to send to server %s: %v", conn.RemoteAddr().String(), err)
@@ -133,39 +203,54 @@ func (c *Client) ProcessMessage() {
 				overFlow = append(overFlow, p...)
 				continue
 			case i == 1:
-				if len(p) < encoding.HeaderSize {
+				if len(p) < encoding.AESEncryptHeaderSize {
 					c.cfg.Logger.Printf("Client: packet is not the full message. add to overflow\n")
 					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 					overFlow = append(overFlow, p...)
 					continue
 				}
 				c.cfg.Logger.Printf("Client: decode header\n")
-				packetNum := binary.BigEndian.Uint16(p[0:])
-				numPackets := binary.BigEndian.Uint16(p[2:])
-				packetLen := binary.BigEndian.Uint16(p[4:])
 
-				if len(p) < int(packetLen) {
+				payloadSize := binary.BigEndian.Uint16(p[0:])
+
+				if len(p) < int(payloadSize) {
 					c.cfg.Logger.Printf("Client: packet is not the full message. add to overflow\n")
 					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 					overFlow = append(overFlow, p...)
 					continue
 				}
-				packet := p[encoding.HeaderSize : packetLen+encoding.HeaderSize]
+				payload := p[encoding.AESEncryptHeaderSize : payloadSize+encoding.AESEncryptHeaderSize]
 
-				if (packetLen + encoding.HeaderSize) > uint16(nr) {
-					c.cfg.Logger.Printf("Client: add remaining bytes to overflow for next read: %v\n", p[packetLen+encoding.HeaderSize:])
-					overFlow = p[packetLen+encoding.HeaderSize:]
-					overFlow = append(overFlow, p[packetLen+encoding.HeaderSize:]...)
+				if (payloadSize + encoding.AESEncryptHeaderSize) > uint16(nr) {
+					c.cfg.Logger.Printf("Client: add remaining bytes to overflow for next read: %v\n", p[payloadSize+encoding.AESEncryptHeaderSize:])
+					overFlow = p[payloadSize+encoding.AESEncryptHeaderSize:]
+					overFlow = append(overFlow, p[payloadSize+encoding.AESEncryptHeaderSize:]...)
 				}
 
+				decPayload, err := crypto.AESDecrypt(payload, c.ServerAESKey)
+				if err != nil {
+					c.cfg.Logger.Printf("Client: error Decrypting payload: %v", err)
+					continue
+				}
+
+				packetNum := binary.BigEndian.Uint16(decPayload[0:])
+				numPackets := binary.BigEndian.Uint16(decPayload[2:])
+				packetLen := binary.BigEndian.Uint16(decPayload[4:])
+
+				if len(decPayload) < int(packetLen) {
+					c.cfg.Logger.Printf("Client: error, decrypted payload is not the full message")
+					continue
+				}
+				packet := decPayload[encoding.HeaderSize : packetLen+encoding.HeaderSize]
+
 				buffer := bytes.NewBuffer(packet)
-				dataPacket := encoding.DecodePacket(buffer)
+				dataPacket := encoding.DecodeMsgPacket(buffer)
 				if numPackets == 1 {
 					c.ActionMessageType(dataPacket)
 				} else {
 					c.multiMessages[int(packetNum)] = dataPacket
 					if len(c.multiMessages) == int(numPackets) {
-						newProtocol := encoding.Protocol{}
+						newProtocol := encoding.MsgProtocol{}
 						mergedData := []byte{}
 						for i := 1; i <= int(numPackets); i++ {
 							msg := c.multiMessages[i]
@@ -174,11 +259,12 @@ func (c *Client) ProcessMessage() {
 								newProtocol.Username = msg.Username
 								newProtocol.UsernameSize = msg.UsernameSize
 								newProtocol.UserColour = msg.UserColour
+								newProtocol.UserColourSize = msg.UserColourSize
 								newProtocol.DateTime = msg.DateTime
 							}
 							mergedData = append(mergedData, msg.Data[:msg.MsgSize]...)
 						}
-						c.multiMessages = make(map[int]encoding.Protocol)
+						c.multiMessages = make(map[int]encoding.MsgProtocol)
 						c.ActionMessageTypeMultiMessage(newProtocol, mergedData)
 					}
 				}
@@ -226,10 +312,82 @@ func (c *Client) AwaitMessage() {
 	}
 }
 
+func (c *Client) AwaitHandshakeResponse(conn net.Conn) (encoding.MsgProtocol, error) {
+	for {
+		buf := make([]byte, encoding.MaxPacketSize)
+		nr, err := conn.Read(buf)
+		if err != nil {
+			if err.Error() != "EOF" {
+				c.cfg.Logger.Printf("error reading from conn: %v\n", err)
+			}
+			return encoding.MsgProtocol{}, err
+		}
+		if nr == 0 {
+			continue
+		}
+		data := buf[0:nr]
+
+		sd := bytes.Split(data, encoding.HeaderPattern[:])
+		packetLen := binary.BigEndian.Uint16(sd[1][4:])
+		packet := sd[1][encoding.HeaderSize : packetLen+encoding.HeaderSize]
+		buffer := bytes.NewBuffer(packet)
+		dataPacket := encoding.DecodeMsgPacket(buffer)
+		if dataPacket.MessageType == encoding.RequestConnect {
+			c.cfg.Logger.Print("Client: handshake complete")
+			return dataPacket, nil
+		}
+	}
+}
+
+func (c *Client) AwaitServerKey(conn net.Conn) ([]byte, error) {
+	for {
+		buf := make([]byte, encoding.MaxPacketSize)
+		nr, err := conn.Read(buf)
+		if err != nil {
+			if err.Error() != "EOF" {
+				c.cfg.Logger.Printf("error reading from conn: %v\n", err)
+			}
+			return nil, err
+		}
+		if nr == 0 {
+			continue
+		}
+		data := buf[0:nr]
+		c.cfg.Logger.Printf("Client: nr=%v\n", nr)
+		c.cfg.Logger.Printf("Client: data=%v\n", data)
+		sd := bytes.Split(data, encoding.HeaderPattern[:])
+		encPacket := sd[1]
+		packetLen := binary.BigEndian.Uint16(encPacket[4:])
+
+		payload := encPacket[encoding.HeaderSize : packetLen+encoding.HeaderSize]
+		buffer := bytes.NewBuffer(payload)
+		dataPacket := encoding.DecodeAESPacket(buffer)
+
+		decPayload, err := crypto.RSADecrypt(dataPacket.Data[:dataPacket.MsgSize], c.cfg.RSAKeyPair.PrivateKey)
+		if err != nil {
+			c.cfg.Logger.Printf("Client: error Decrypting payload: %v", err)
+			return nil, err
+		}
+		err = crypto.RSAVerify(decPayload, dataPacket.Sig[:dataPacket.SigSize], c.ServerPubKey)
+		if err != nil {
+			c.cfg.Logger.Printf("Client: error verifying payload: %v", err)
+			return nil, err
+		}
+
+		if dataPacket.MessageType == encoding.SendAESKey {
+			c.cfg.Logger.Print("Client: AES Key Received complete")
+			return decPayload, nil
+		}
+	}
+}
+
 func (c *Client) SendMessageToServer(msg []byte) error {
-	toSend := encoding.PrepBytesForSending(msg, encoding.Message, c.cfg.Username, c.cfg.UserColour)
+	toSend, err := encoding.PrepBytesForSending(msg, encoding.Message, c.cfg.Username, c.cfg.UserColour, c.cfg.ClientAESKey)
+	if err != nil {
+		return fmt.Errorf("error creating packet to send: %v", err)
+	}
 	c.cfg.Logger.Printf("SendMessageToServer: len %v\n", len(toSend))
-	_, err := c.ActiveConn.Write(toSend)
+	_, err = c.ActiveConn.Write(toSend)
 	if err != nil {
 		return fmt.Errorf("failed to send to server %s: %v", c.ActiveConn.RemoteAddr().String(), err)
 	}

@@ -37,7 +37,7 @@ func getUserCommands() map[string]userCommand {
 }
 
 func connectToServer(c *Client) {
-	srvAddr := c.LastCommand
+	srvAddr := c.userCmdArg
 	c.cfg.Logger.Printf("Attempting to connect to %v\n", srvAddr)
 	c.Connect(srvAddr)
 }
@@ -56,6 +56,7 @@ func disconnectFromServer(c *Client) {
 func exitApplication(c *Client) {
 	c.cfg.Logger.Println("Closing any active connections..")
 	disconnectFromServer(c)
+	c.TUI.Stop()
 	c.cfg.Logger.Println("Closing application")
 	os.Exit(0)
 }
@@ -83,7 +84,7 @@ func actionInput(c *Client, usrInput string) {
 			c.cfg.Logger.Printf("\n%s is not a valid user command. Use \\list-user-commands to see available user commands.", cmd)
 			return
 		}
-		c.LastCommand = strings.Join(inputArgs[1:], " ")
+		c.userCmdArg = strings.Join(inputArgs[1:], " ")
 		clientCmd.callback(c)
 		return
 	}
