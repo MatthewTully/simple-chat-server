@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net"
@@ -95,13 +96,15 @@ func TestConnectionLimits(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, err := NewServer("8144", 10, &log.Logger{})
+			var buff bytes.Buffer
+			test_logger := log.New(&buff, "", log.Lshortfile|log.LstdFlags)
+			srv, err := NewServer("8142", 10, test_logger)
 			srv.MaxConnectionLimit = tc.connectionLimit
 			if err != nil {
 				t.Errorf("error declaring srv for test case %v, error: %v", tc.name, err)
 			}
 			for i := range tc.connCount {
-				conn, err := net.Dial("tcp", ":8144")
+				conn, err := net.Dial("tcp", ":8142")
 				if err != nil {
 					t.Errorf("error creating conn in test %v", tc.name)
 				}

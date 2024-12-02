@@ -67,7 +67,7 @@ func initView(c *Client) *tview.Application {
 
 	textBox.SetAutocompletedFunc(func(text string, index, source int) bool {
 		if source != tview.AutocompletedNavigate {
-			textBox.SetText(text)
+			textBox.SetText(text + " ")
 		}
 		return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
 	})

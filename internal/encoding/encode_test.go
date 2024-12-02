@@ -41,11 +41,11 @@ func TestPackageMessageBytes(t *testing.T) {
 				`This byte string that is not within the size of MaxMessageSize. In fact it is over the limit, quite a bit over in fact. Just enough for two protocol packets to be sent, in fact, that is the expect result of this test. Of course that is a lot of bytes, so I'll just repeat this five times!
 1. This byte string that is not within the size of MaxMessageSize. In fact it is over the limit, quite a bit over in fact. Just enough for two protocol packets to be sent, in fact, that is the expect result of this test. Of course that is a lot of bytes, so I'll just repeat this five times!
 2. This byte string that is not within the size of MaxMessageSize. In fact it is over the limit, quite a bit over in fact. Just enough for two protocol packets to be sent, in fact, that is the expect result of this test. Of course that is a lot of bytes, so I'll just repeat this five times!
-3. This byte string that is not within the size of MaxMessageSize. In fact it is over the limit, quite a bit over in fact. Just enough for two protocol packets to be sent, in fact, that is the expect result of this test. Of course that is a lot of bytes, so I'll just repeat this five times!
-4. This byte string that is not wit`, `hin the size of MaxMessageSize. In fact it is over the limit, quite a bit over in fact. Just enough for two protocol packets to be sent, in fact, that is the expect result of this test. Of course that is a lot of bytes, so I'll just repeat this five times!
+3. This byte string that is not within the size of MaxMessageSize. In fact it is over the limit, quite a bit over in fact. Just`, ` enough for two protocol packets to be sent, in fact, that is the expect result of this test. Of course that is a lot of bytes, so I'll just repeat this five times!
+4. This byte string that is not within the size of MaxMessageSize. In fact it is over the limit, quite a bit over in fact. Just enough for two protocol packets to be sent, in fact, that is the expect result of this test. Of course that is a lot of bytes, so I'll just repeat this five times!
 5. This byte string that is not within the size of MaxMessageSize. In fact it is over the limit, quite a bit over in fact. Just enough for two protocol packets to be sent, in fact, that is the expect result of this test. Of course that is a lot of bytes, so I'll just repeat this five times!`,
 			},
-			expectedMsgSize: []uint16{uint16(MaxMessageSize), 548},
+			expectedMsgSize: []uint16{uint16(MaxMessageSize), 748},
 		},
 	}
 
@@ -60,7 +60,7 @@ func TestPackageMessageBytes(t *testing.T) {
 					t.Errorf("Expected data size to be %v, Got %v\n", MaxMessageSize, len(protocols.Data))
 				}
 				if tc.expectedMsgSize[i] != protocols.MsgSize {
-					t.Errorf("Expected protocol data size to be to be %v, Got %v\n", MaxMessageSize, len(protocols.Data))
+					t.Errorf("Expected protocol data size to be to be %v, Got (%v)\n", tc.expectedMsgSize[i], protocols.MsgSize)
 				}
 				if string(protocols.Data[:protocols.MsgSize]) != tc.expectedString[i] {
 					t.Errorf("Expected protocol data [%v] %v to Equal %v\n", i, string(protocols.Data[:protocols.MsgSize]), tc.expectedString[i])
