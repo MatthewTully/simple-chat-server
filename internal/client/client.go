@@ -34,6 +34,7 @@ type Client struct {
 	activeUsersView *tview.TextView
 	multiMessages   map[int]encoding.MsgProtocol
 	userCmdArg      string
+	tuiPages        *tview.Pages
 }
 
 func NewClient(cfg *ClientConfig) Client {

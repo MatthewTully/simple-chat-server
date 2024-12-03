@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -19,6 +20,9 @@ func StartTUI(c *Client) error {
 
 func initView(c *Client) *tview.Application {
 	app := tview.NewApplication()
+
+	pages := tview.NewPages()
+
 	chatLog := createChatLogView().SetChangedFunc(c.textViewChangeHandler)
 	textBox := createMsgBoxView()
 
@@ -75,11 +79,23 @@ func initView(c *Client) *tview.Application {
 	chatter_flex := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(chatLog, 0, 1, false).AddItem(textBox, 3, 1, true)
 	activeChatters := createActiveChatterView().SetChangedFunc(c.textViewChangeHandler)
 	mainView := tview.NewFlex().AddItem(chatter_flex, 0, 5, true).AddItem(activeChatters, 20, 1, false)
-	app.SetRoot(mainView, true).EnableMouse(true).EnablePaste(true)
+
+	userCmdModal := userCommandModal()
+
+	userCmdModal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+		if buttonLabel == "OK" {
+			pages.HidePage("user-commands")
+		}
+	})
+
+	pages.AddPage("chat-view", mainView, true, true)
+	pages.AddPage("user-commands", userCmdModal, false, false)
+
+	app.SetRoot(pages, true).EnableMouse(true).EnablePaste(true)
 
 	c.chatView = chatLog
 	c.activeUsersView = activeChatters
-
+	c.tuiPages = pages
 	return app
 }
 
@@ -118,4 +134,20 @@ func createMsgBoxView() *tview.InputField {
 	txtBox.SetBorderPadding(0, 0, 1, 1)
 
 	return txtBox
+}
+
+func userCommandModal() *tview.Modal {
+	modal := tview.NewModal()
+	modal.AddButtons([]string{"OK"})
+	commands := getUserCommands()
+	var sb strings.Builder
+
+	sb.WriteString("Available User commands:\n\n")
+
+	for _, cmd := range commands {
+		sb.WriteString(fmt.Sprintf("  %s - %s\n", cmd.name, cmd.description))
+	}
+
+	modal.SetText(sb.String())
+	return modal
 }

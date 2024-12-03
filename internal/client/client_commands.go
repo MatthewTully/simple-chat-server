@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"os"
 	"strings"
 )
@@ -38,7 +39,7 @@ func getUserCommands() map[string]userCommand {
 
 func connectToServer(c *Client) {
 	srvAddr := c.userCmdArg
-	c.cfg.Logger.Printf("Attempting to connect to %v\n", srvAddr)
+	c.chatView.Write([]byte(fmt.Sprintf("Attempting to connect to %v\n", srvAddr)))
 	c.Connect(srvAddr)
 }
 
@@ -46,29 +47,26 @@ func disconnectFromServer(c *Client) {
 	conn := c.ActiveConn
 	if conn == nil {
 		c.cfg.Logger.Println("No active connections")
+		c.chatView.Write([]byte("No active connections"))
 		return
 	}
-	c.cfg.Logger.Printf("Disconnecting from %v\n", c.ActiveConn.RemoteAddr().String())
+	c.chatView.Write([]byte(fmt.Sprintf("Disconnecting from %v\n", c.ActiveConn.RemoteAddr().String())))
 	c.ActiveConn.Close()
-	c.cfg.Logger.Println("Successfully disconnected.")
+	c.chatView.Write([]byte("Successfully disconnected."))
 }
 
 func exitApplication(c *Client) {
 	c.cfg.Logger.Println("Closing any active connections..")
+	c.chatView.Write([]byte("Closing any active connections.."))
 	disconnectFromServer(c)
-	c.TUI.Stop()
 	c.cfg.Logger.Println("Closing application")
+	c.chatView.Write([]byte("Closing application"))
+	c.TUI.Stop()
 	os.Exit(0)
 }
 
 func listUserCommands(c *Client) {
-	usrCmdMap := getUserCommands()
-	c.cfg.Logger.Println("\n#------------------------------------------------#")
-	c.cfg.Logger.Printf("Available User commands:\n\n")
-	for _, cmd := range usrCmdMap {
-		c.cfg.Logger.Printf("  %s - %s\n", cmd.name, cmd.description)
-	}
-	c.cfg.Logger.Println("#------------------------------------------------#")
+	c.tuiPages.ShowPage("user-commands")
 }
 
 func actionInput(c *Client, usrInput string) {
