@@ -34,6 +34,11 @@ func getUserCommands() map[string]userCommand {
 			description: "List available commands",
 			callback:    listUserCommands,
 		},
+		"\\whisper": {
+			name:        "\\whisper",
+			description: "Send a message directly to a user",
+			callback:    whisperMsgToUser,
+		},
 	}
 }
 
@@ -56,10 +61,8 @@ func disconnectFromServer(c *Client) {
 }
 
 func exitApplication(c *Client) {
-	c.cfg.Logger.Println("Closing any active connections..")
 	c.chatView.Write([]byte("Closing any active connections.."))
 	disconnectFromServer(c)
-	c.cfg.Logger.Println("Closing application")
 	c.chatView.Write([]byte("Closing application"))
 	c.TUI.Stop()
 	os.Exit(0)
@@ -67,6 +70,15 @@ func exitApplication(c *Client) {
 
 func listUserCommands(c *Client) {
 	c.tuiPages.ShowPage("user-commands")
+}
+
+func whisperMsgToUser(c *Client) {
+	msg := c.userCmdArg
+	if len(msg) > 0 {
+		msg := msg + "\n"
+		c.SendWhisperToServer([]byte(msg))
+		c.PushMessageToChatView(msg)
+	}
 }
 
 func actionInput(c *Client, usrInput string) {

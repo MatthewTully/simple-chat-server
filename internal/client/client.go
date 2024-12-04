@@ -395,6 +395,19 @@ func (c *Client) SendMessageToServer(msg []byte) error {
 	return nil
 }
 
+func (c *Client) SendWhisperToServer(msg []byte) error {
+	toSend, err := encoding.PrepBytesForSending(msg, encoding.WhisperMessage, c.cfg.Username, c.cfg.UserColour, c.cfg.ClientAESKey)
+	if err != nil {
+		return fmt.Errorf("error creating packet to send: %v", err)
+	}
+	c.cfg.Logger.Printf("SendWhisperToServer: len %v\n", len(toSend))
+	_, err = c.ActiveConn.Write(toSend)
+	if err != nil {
+		return fmt.Errorf("failed to send to server %s: %v", c.ActiveConn.RemoteAddr().String(), err)
+	}
+	return nil
+}
+
 func (c *Client) PushMessageToChatView(msg string) {
 	msg = fmt.Sprintf("[%s]%s ~ [white]%s", c.cfg.UserColour, c.cfg.Username, msg)
 	c.chatView.Write([]byte(msg))

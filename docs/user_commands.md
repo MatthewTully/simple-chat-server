@@ -29,9 +29,6 @@ Basic commands that can be used anywhere in the application by any user.
 Commands that can be used when connected to a server. 
 
 ```
-
-\active-users          - Will list all the currently connected users.
-\total-users           - How many users are current connected.
 \whisper { username }  - Send a message to the specified user only.
 
 ```
