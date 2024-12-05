@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 )
@@ -16,17 +17,17 @@ func getUserCommands() map[string]userCommand {
 	return map[string]userCommand{
 		"\\connect": {
 			name:        "\\connect",
-			description: "connect to a server",
+			description: "Connect to a server",
 			callback:    connectToServer,
 		},
 		"\\disconnect": {
 			name:        "\\disconnect",
-			description: "disconnect from a server",
+			description: "Disconnect from a server",
 			callback:    disconnectFromServer,
 		},
 		"\\exit": {
 			name:        "\\exit",
-			description: "close the application",
+			description: "Close the application",
 			callback:    exitApplication,
 		},
 		"\\list-user-commands": {
@@ -42,33 +43,68 @@ func getUserCommands() map[string]userCommand {
 	}
 }
 
+func getHostCommands() map[string]userCommand {
+	return map[string]userCommand{
+		"\\kick": {
+			name:        "\\kick",
+			description: "Disconnect the specified user",
+			callback:    kickUser,
+		},
+		"\\ban": {
+			name:        "\\ban",
+			description: "Disconnect user and add their IP to the blacklist",
+			callback:    banUser,
+		},
+	}
+}
+
+func kickUser(c *Client) {
+	if !c.Host {
+		return
+	}
+	usr := c.userCmdArg
+	c.HostServer.CloseConnectionForUser(usr)
+}
+
+func banUser(c *Client) {
+	if !c.Host {
+		return
+	}
+	usr := c.userCmdArg
+	c.HostServer.BanUser(usr)
+}
+
 func connectToServer(c *Client) {
 	srvAddr := c.userCmdArg
-	c.chatView.Write([]byte(fmt.Sprintf("Attempting to connect to %v\n", srvAddr)))
+	c.PushToChatView(fmt.Sprintf("Attempting to connect to %v\n", srvAddr))
 	c.Connect(srvAddr)
 }
 
 func disconnectFromServer(c *Client) {
 	conn := c.ActiveConn
 	if conn == nil {
-		c.cfg.Logger.Println("No active connections")
-		c.chatView.Write([]byte("No active connections"))
+		c.PushToChatView("No active connections")
 		return
 	}
-	c.chatView.Write([]byte(fmt.Sprintf("Disconnecting from %v\n", c.ActiveConn.RemoteAddr().String())))
+	c.PushToChatView(fmt.Sprintf("Disconnecting from %v\n", c.ActiveConn.RemoteAddr().String()))
+	c.SendDisconnectionRequest()
 	c.ActiveConn.Close()
-	c.chatView.Write([]byte("Successfully disconnected."))
+	c.PushToChatView("Successfully disconnected.")
 }
 
 func exitApplication(c *Client) {
-	c.chatView.Write([]byte("Closing any active connections.."))
+	c.PushToChatView("Closing any active connections..")
 	disconnectFromServer(c)
-	c.chatView.Write([]byte("Closing application"))
+	c.PushToChatView("Closing application")
 	c.TUI.Stop()
 	os.Exit(0)
 }
 
 func listUserCommands(c *Client) {
+	if c.Host {
+		c.tuiPages.ShowPage("host-user-commands")
+		return
+	}
 	c.tuiPages.ShowPage("user-commands")
 }
 
@@ -77,12 +113,15 @@ func whisperMsgToUser(c *Client) {
 	if len(msg) > 0 {
 		msg := msg + "\n"
 		c.SendWhisperToServer([]byte(msg))
-		c.PushMessageToChatView(msg)
+		c.PushSentMessageToChatView(msg)
 	}
 }
 
 func actionInput(c *Client, usrInput string) {
 	usrCmdMap := getUserCommands()
+	if c.Host {
+		maps.Copy(usrCmdMap, getHostCommands())
+	}
 	inputArgs := strings.Fields((usrInput))
 	if len(inputArgs) == 0 {
 		return
@@ -91,7 +130,7 @@ func actionInput(c *Client, usrInput string) {
 	if strings.HasPrefix(cmd, "\\") {
 		clientCmd, exists := usrCmdMap[cmd]
 		if !exists {
-			c.cfg.Logger.Printf("\n%s is not a valid user command. Use \\list-user-commands to see available user commands.", cmd)
+			c.PushToChatView(fmt.Sprintf("%s is not a valid user command. Use \\list-user-commands to see available user commands.", cmd))
 			return
 		}
 		c.userCmdArg = strings.Join(inputArgs[1:], " ")
@@ -100,8 +139,8 @@ func actionInput(c *Client, usrInput string) {
 	}
 	err := c.SendMessageToServer([]byte(usrInput))
 	if err != nil {
-		//TODO show error sending, ask to try again.
+		c.PushToChatView("Could not send message. Please try again.")
 		return
 	}
-	c.PushMessageToChatView(usrInput)
+	c.PushSentMessageToChatView(usrInput)
 }

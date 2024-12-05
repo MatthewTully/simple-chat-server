@@ -41,7 +41,5 @@ List of commands available to the host of the server.
 
 \kick { username }  - Will disconnect the specified user.
 \ban { username }   - Disconnect user, and add their IP to the blacklist, preventing them user from reconnecting.
-\history            - Prints the entire chat history from the buffer.
-\history { number } - Prints n latest messages from the chat history. Where n is the number specified. Must be a uint value.
 
 ```

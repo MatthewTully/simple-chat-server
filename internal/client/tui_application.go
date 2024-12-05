@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -16,6 +17,10 @@ func StartTUI(c *Client) error {
 		return err
 	}
 	return nil
+}
+
+func (c *Client) PushToChatView(msg string) {
+	c.chatView.Write([]byte(msg))
 }
 
 func initView(c *Client) *tview.Application {
@@ -58,12 +63,17 @@ func initView(c *Client) *tview.Application {
 		if !strings.HasPrefix(currentText, "\\") {
 			return
 		}
-		for key := range getUserCommands() {
+		cmds := getUserCommands()
+		if c.Host {
+			maps.Copy(cmds, getHostCommands())
+		}
+
+		for key := range cmds {
 			if strings.HasPrefix(strings.ToLower(key), strings.ToLower(currentText)) {
 				entries = append(entries, key)
 			}
 		}
-		if len(entries) <= 1 {
+		if len(entries) < 1 {
 			entries = nil
 		}
 		return
@@ -81,15 +91,22 @@ func initView(c *Client) *tview.Application {
 	mainView := tview.NewFlex().AddItem(chatter_flex, 0, 5, true).AddItem(activeChatters, 20, 1, false)
 
 	userCmdModal := userCommandModal()
+	hostCmdModal := hostCommandModal()
 
 	userCmdModal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 		if buttonLabel == "OK" {
 			pages.HidePage("user-commands")
 		}
 	})
+	hostCmdModal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+		if buttonLabel == "OK" {
+			pages.HidePage("host-user-commands")
+		}
+	})
 
 	pages.AddPage("chat-view", mainView, true, true)
 	pages.AddPage("user-commands", userCmdModal, false, false)
+	pages.AddPage("host-user-commands", hostCmdModal, false, false)
 
 	app.SetRoot(pages, true).EnableMouse(true).EnablePaste(true)
 
@@ -145,6 +162,26 @@ func userCommandModal() *tview.Modal {
 	sb.WriteString("Available User commands:\n\n")
 
 	for _, cmd := range commands {
+		sb.WriteString(fmt.Sprintf("  %s - %s\n", cmd.name, cmd.description))
+	}
+
+	modal.SetText(sb.String())
+	return modal
+}
+
+func hostCommandModal() *tview.Modal {
+	modal := tview.NewModal()
+	modal.AddButtons([]string{"OK"})
+	commands := getUserCommands()
+	hostCommands := getHostCommands()
+	var sb strings.Builder
+
+	sb.WriteString("Available User commands:\n\n")
+
+	for _, cmd := range commands {
+		sb.WriteString(fmt.Sprintf("  %s - %s\n", cmd.name, cmd.description))
+	}
+	for _, cmd := range hostCommands {
 		sb.WriteString(fmt.Sprintf("  %s - %s\n", cmd.name, cmd.description))
 	}
 

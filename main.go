@@ -101,6 +101,7 @@ func main() {
 
 		go srv.StartListening()
 		cli.Connect(fmt.Sprintf("127.0.0.1:%s", port))
+		cli.SetAsHost(&srv)
 	}
 	client.StartTUI(&cli)
 }

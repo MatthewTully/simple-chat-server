@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/rsa"
 	"encoding/binary"
+	"fmt"
 	"net"
+	"strings"
 
 	"github.com/MatthewTully/simple-chat-server/internal/crypto"
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
@@ -131,4 +133,52 @@ func (cu *ConnectedUser) ProcessMessage(s *Server) {
 		}
 
 	}
+}
+
+func (s *Server) IsActiveUser(username string) (ConnectedUser, bool) {
+	s.rwmu.RLock()
+	defer s.rwmu.RUnlock()
+	user, exists := s.LiveConns[username]
+	return user, exists
+}
+
+func (s *Server) GetAllActiveUsers() []UserInfo {
+	s.rwmu.RLock()
+	defer s.rwmu.RUnlock()
+
+	activeUsers := []UserInfo{}
+	for key := range s.LiveConns {
+		activeUsers = append(activeUsers, s.LiveConns[key].userInfo)
+	}
+	return activeUsers
+}
+
+func (s *Server) BroadcastActiveUsers() {
+	activeUsrSlice := []byte{}
+	for _, data := range s.GetAllActiveUsers() {
+		usrByteSlice := []byte(fmt.Sprintf("[%s]%v[white];", data.UserColour, data.Username))
+		activeUsrSlice = append(activeUsrSlice, usrByteSlice...)
+	}
+	if len(activeUsrSlice) == 0 {
+		return
+	}
+
+	toSend, err := encoding.PrepBytesForSending(activeUsrSlice, encoding.ServerActiveUsers, s.cfg.ServerName, "white", s.cfg.AESKey)
+	if err != nil {
+		s.cfg.Logger.Printf("error creating packet to send: %v", err)
+	}
+	s.cfg.Logger.Printf("Total active users is: %v\n", len(s.GetAllActiveUsers()))
+	s.cfg.Logger.Printf("BroadcastActiveUsers: len %v\n", len(toSend))
+	s.BroadcastMessage(s.cfg.ServerName, toSend)
+}
+
+func (s *Server) BanUser(username string) bool {
+	user, exists := s.IsActiveUser(username)
+	if exists {
+		ip := strings.Split(user.conn.LocalAddr().String(), ":")[0]
+		s.Blacklist = append(s.Blacklist, ip)
+		s.CloseConnectionForUser(username)
+		return true
+	}
+	return false
 }

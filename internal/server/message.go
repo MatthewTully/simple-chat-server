@@ -14,21 +14,21 @@ func (s *Server) ActionMessageType(p encoding.MsgProtocol) error {
 		//update keep alive so user is not disconnected
 	case encoding.Message:
 		sentBy := string(p.Username[:p.UsernameSize])
-		msg := []byte(fmt.Sprintf("[white]%v[white] [%s]%v ~[white] ", p.DateTime.Format("02/01/06 - 15:04:05"), string(p.UserColour[:p.UserColourSize]), sentBy))
+		msg := []byte(fmt.Sprintf("[white]%v[white] [%s]%v ~[white] ", p.DateTime.Format("02/01/06 15:04"), string(p.UserColour[:p.UserColourSize]), sentBy))
 		msg = append(msg, p.Data[:p.MsgSize]...)
 		s.ProcessGroupMessage(sentBy, msg)
 	case encoding.WhisperMessage:
-		//Sent to user
 		sentBy := string(p.Username[:p.UsernameSize])
 		baseMsg := string(p.Data[:p.MsgSize])
 		split := strings.Split(baseMsg, " ")
 		toUser := split[0]
-		msg := []byte(fmt.Sprintf("[white]%v[white] [%s][::i](whispered)[::-] %v ~[white] ", p.DateTime.Format("02/01/06 - 15:04:05"), string(p.UserColour[:p.UserColourSize]), sentBy))
+		msg := []byte(fmt.Sprintf("[white]%v[white] [%s][::i](whispered)[::-] %v ~[white] ", p.DateTime.Format("02/01/06 15:04"), string(p.UserColour[:p.UserColourSize]), sentBy))
 		joined := fmt.Sprintf("[:r:i]%v[:-:-]", strings.Join(split, " "))
 		msg = append(msg, []byte(joined)...)
 		s.SentMessageToClient(toUser, msg)
 	case encoding.RequestDisconnect:
 		s.CloseConnectionForUser(string(p.Username[:p.UsernameSize]))
+		s.BroadcastActiveUsers()
 	}
 	return fmt.Errorf("could not determine message type. %v", p.MessageType)
 }
@@ -39,21 +39,21 @@ func (s *Server) ActionMessageTypeMultiMessage(p encoding.MsgProtocol, data []by
 		//update keep alive so user is not disconnected
 	case encoding.Message:
 		sentBy := string(p.Username[:p.UsernameSize])
-		msg := []byte(fmt.Sprintf("[%s][::i](whispered)[::-] %v ~[white] ", string(p.UserColour[:p.UserColourSize]), sentBy))
+		msg := []byte(fmt.Sprintf("[white]%v[white] [%s]%v ~[white] ", p.DateTime.Format("02/01/06 15:04"), string(p.UserColour[:p.UserColourSize]), sentBy))
 		msg = append(msg, data...)
 		s.ProcessGroupMessage(sentBy, msg)
 	case encoding.WhisperMessage:
-		//Sent to user
 		sentBy := string(p.Username[:p.UsernameSize])
 		baseMsg := string(data)
 		split := strings.Split(baseMsg, " ")
 		toUser := split[0]
-		msg := []byte(fmt.Sprintf("[%s]%v ~[white] ", string(p.UserColour[:p.UserColourSize]), sentBy))
+		msg := []byte(fmt.Sprintf("[white]%v[white] [%s][::i](whispered)[::-] %v ~[white] ", p.DateTime.Format("02/01/06 15:04"), string(p.UserColour[:p.UserColourSize]), sentBy))
 		joined := fmt.Sprintf("[:r:i]%v[:-:-]", strings.Join(split, " "))
 		msg = append(msg, []byte(joined)...)
 		s.SentMessageToClient(toUser, msg)
 	case encoding.RequestDisconnect:
 		s.CloseConnectionForUser(string(p.Username[:p.UsernameSize]))
+		s.BroadcastActiveUsers()
 	}
 	return fmt.Errorf("could not determine message type. %v", p.MessageType)
 }
@@ -139,4 +139,28 @@ func (s *Server) SentMessageToClient(client string, msg []byte) error {
 	s.cfg.Logger.Printf("SentMessageToClient: len %v\n", len(toSend))
 	err = SendMessage(user.conn, toSend)
 	return err
+}
+
+func (s *Server) SendHistory(user ConnectedUser) error {
+	if len(s.MsgHistory) > 0 {
+		s.rwmu.RLock()
+		defer s.rwmu.RUnlock()
+		for _, msg := range s.MsgHistory {
+			err := s.SentMessageToClient(user.userInfo.Username, msg)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Server) AddMsgToHistory(msg []byte) {
+	s.rwmu.Lock()
+	defer s.rwmu.Unlock()
+	if len(s.MsgHistory) >= int(s.MaxMsgHistorySize) {
+		s.MsgHistory = s.MsgHistory[1:]
+
+	}
+	s.MsgHistory = append(s.MsgHistory, msg)
 }
