@@ -56,11 +56,14 @@ func (s *Server) DenyConnection(conn net.Conn, errMsg string) {
 }
 
 func (s *Server) CloseConnection(user ConnectedUser) {
-	s.ProcessGroupMessage(s.cfg.ServerName, []byte(fmt.Sprintf("User %v has left the server!\n", user.userInfo.Username)))
 	s.rwmu.Lock()
 	delete(s.LiveConns, user.userInfo.Username)
 	s.rwmu.Unlock()
+	s.SendDisconnectionNotification(user)
 	user.conn.Close()
+	s.cfg.Logger.Printf("Connection closed for user %v", user.userInfo.Username)
+	s.ProcessGroupMessage(s.cfg.ServerName, []byte(fmt.Sprintf("User %v has left the server!\n", user.userInfo.Username)))
+	s.BroadcastActiveUsers()
 }
 
 func (s *Server) CloseConnectionForUser(username string) {

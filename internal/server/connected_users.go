@@ -34,12 +34,12 @@ func (cu *ConnectedUser) ProcessMessage(s *Server) {
 	for {
 		buf := <-cu.processChannel
 		nr := len(buf)
-		s.cfg.Logger.Printf("Server: in chan, Buf read = %v\n", buf)
+		s.cfg.Logger.Printf("in chan, Buf read = %v\n", buf)
 		if len(overFlow) > 0 {
-			s.cfg.Logger.Printf("Server: Using overflow\n")
+			s.cfg.Logger.Printf("Using overflow\n")
 			data = append(overFlow, buf[0:nr]...)
 			overFlow = []byte{}
-			s.cfg.Logger.Printf("Server: data with overflow and buf = %v\n", data)
+			s.cfg.Logger.Printf("data with overflow and buf = %v\n", data)
 		} else {
 			data = buf[0:nr]
 		}
@@ -50,22 +50,22 @@ func (cu *ConnectedUser) ProcessMessage(s *Server) {
 			s.cfg.Logger.Printf("%v: %v\n", i, p)
 			switch {
 			case i == 0 && len(p) > 0:
-				s.cfg.Logger.Println("Server: tail end of the previous message. add to overflow")
+				s.cfg.Logger.Println("tail end of the previous message. add to overflow")
 				overFlow = append(overFlow, p...)
 				continue
 			case i == 1:
 				if len(p) < encoding.AESEncryptHeaderSize {
-					s.cfg.Logger.Printf("Server: packet is not the full message. add to overflow\n")
+					s.cfg.Logger.Printf("packet is not the full message. add to overflow\n")
 					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 					overFlow = append(overFlow, p...)
 					continue
 				}
-				s.cfg.Logger.Printf("Server: decode header\n")
+				s.cfg.Logger.Printf("decode header\n")
 
 				payloadSize := binary.BigEndian.Uint16(p[0:])
 
 				if len(p) < int(payloadSize) {
-					s.cfg.Logger.Printf("Server: packet is not the full message. add to overflow\n")
+					s.cfg.Logger.Printf("packet is not the full message. add to overflow\n")
 					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 					overFlow = append(overFlow, p...)
 					continue
@@ -73,14 +73,14 @@ func (cu *ConnectedUser) ProcessMessage(s *Server) {
 				payload := p[encoding.AESEncryptHeaderSize : payloadSize+encoding.AESEncryptHeaderSize]
 
 				if (payloadSize + encoding.AESEncryptHeaderSize) > uint16(nr) {
-					s.cfg.Logger.Printf("Server: add remaining bytes to overflow for next read: %v\n", p[payloadSize+encoding.AESEncryptHeaderSize:])
+					s.cfg.Logger.Printf("add remaining bytes to overflow for next read: %v\n", p[payloadSize+encoding.AESEncryptHeaderSize:])
 					overFlow = p[payloadSize+encoding.AESEncryptHeaderSize:]
 					overFlow = append(overFlow, p[payloadSize+encoding.AESEncryptHeaderSize:]...)
 				}
 
 				decPayload, err := crypto.AESDecrypt(payload, cu.AESKey)
 				if err != nil {
-					s.cfg.Logger.Printf("Server: error Decrypting payload: %v", err)
+					s.cfg.Logger.Printf("error Decrypting payload: %v", err)
 					continue
 				}
 
@@ -89,7 +89,7 @@ func (cu *ConnectedUser) ProcessMessage(s *Server) {
 				packetLen := binary.BigEndian.Uint16(decPayload[4:])
 
 				if len(decPayload) < int(packetLen) {
-					s.cfg.Logger.Printf("Server: error, decrypted payload is not the full message")
+					s.cfg.Logger.Printf("error, decrypted payload is not the full message")
 					continue
 				}
 
@@ -122,7 +122,7 @@ func (cu *ConnectedUser) ProcessMessage(s *Server) {
 				}
 				continue
 			case i > 1:
-				s.cfg.Logger.Printf("Server: add extra bytes to overflow for next read: %v\n", p[:])
+				s.cfg.Logger.Printf("add extra bytes to overflow for next read: %v\n", p[:])
 				overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 				overFlow = append(overFlow, p...)
 				continue
@@ -156,6 +156,9 @@ func (s *Server) GetAllActiveUsers() []UserInfo {
 func (s *Server) BroadcastActiveUsers() {
 	activeUsrSlice := []byte{}
 	for _, data := range s.GetAllActiveUsers() {
+		if data.Username == s.cfg.HostUser {
+			data.Username = data.Username + " (host)"
+		}
 		usrByteSlice := []byte(fmt.Sprintf("[%s]%v[white];", data.UserColour, data.Username))
 		activeUsrSlice = append(activeUsrSlice, usrByteSlice...)
 	}

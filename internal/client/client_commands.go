@@ -63,6 +63,12 @@ func kickUser(c *Client) {
 		return
 	}
 	usr := c.userCmdArg
+	if usr == c.cfg.Username {
+		c.PushToChatView("Cannot kick yourself")
+		return
+	}
+	c.PushToChatView(fmt.Sprintf("Kicking %v", usr))
+	c.cfg.Logger.Printf("Kicking Usr %v", usr)
 	c.HostServer.CloseConnectionForUser(usr)
 }
 
@@ -71,25 +77,33 @@ func banUser(c *Client) {
 		return
 	}
 	usr := c.userCmdArg
+	if usr == c.cfg.Username {
+		c.PushToChatView("Cannot ban yourself")
+		return
+	}
 	c.HostServer.BanUser(usr)
 }
 
 func connectToServer(c *Client) {
 	srvAddr := c.userCmdArg
-	c.PushToChatView(fmt.Sprintf("Attempting to connect to %v\n", srvAddr))
+	c.PushToChatView(fmt.Sprintf("Attempting to connect to %v", srvAddr))
 	c.Connect(srvAddr)
+	c.tuiPages.HidePage("home-page")
+	c.PushToChatView(fmt.Sprintf("Successfully connected to %v\n", srvAddr))
 }
 
 func disconnectFromServer(c *Client) {
-	conn := c.ActiveConn
-	if conn == nil {
+	if c.ActiveConn == nil {
 		c.PushToChatView("No active connections")
 		return
 	}
-	c.PushToChatView(fmt.Sprintf("Disconnecting from %v\n", c.ActiveConn.RemoteAddr().String()))
+	c.PushToChatView(fmt.Sprintf("Disconnecting from %v", c.ActiveConn.RemoteAddr().String()))
 	c.SendDisconnectionRequest()
 	c.ActiveConn.Close()
 	c.PushToChatView("Successfully disconnected.")
+	c.chatView.Clear()
+	c.activeUsersView.Clear()
+	c.showHomePage()
 }
 
 func exitApplication(c *Client) {
@@ -109,6 +123,10 @@ func listUserCommands(c *Client) {
 }
 
 func whisperMsgToUser(c *Client) {
+	if c.ActiveConn == nil {
+		c.PushToChatView("No active connections")
+		return
+	}
 	msg := c.userCmdArg
 	if len(msg) > 0 {
 		msg := msg + "\n"
@@ -137,9 +155,20 @@ func actionInput(c *Client, usrInput string) {
 		clientCmd.callback(c)
 		return
 	}
+
+	if c.ActiveConn == nil {
+		c.PushToChatView("No active connections")
+		return
+	}
+
 	err := c.SendMessageToServer([]byte(usrInput))
 	if err != nil {
-		c.PushToChatView("Could not send message. Please try again.")
+		msg := "Could not send message. Please try again."
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			msg = "Could not send message. Connection to the server has been lost."
+			c.showHomePage()
+		}
+		c.PushToChatView(msg)
 		return
 	}
 	c.PushSentMessageToChatView(usrInput)

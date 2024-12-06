@@ -20,7 +20,7 @@ func StartTUI(c *Client) error {
 }
 
 func (c *Client) PushToChatView(msg string) {
-	c.chatView.Write([]byte(msg))
+	c.chatView.Write([]byte(msg + "\n"))
 }
 
 func initView(c *Client) *tview.Application {
@@ -104,20 +104,32 @@ func initView(c *Client) *tview.Application {
 		}
 	})
 
+	homeScreen := homeScreenModal(c.cfg)
+
 	pages.AddPage("chat-view", mainView, true, true)
+	showHomePage := c.ActiveConn == nil
+	pages.AddPage("home-page", homeScreen, false, showHomePage)
 	pages.AddPage("user-commands", userCmdModal, false, false)
 	pages.AddPage("host-user-commands", hostCmdModal, false, false)
 
 	app.SetRoot(pages, true).EnableMouse(true).EnablePaste(true)
+	app.SetFocus(textBox)
 
 	c.chatView = chatLog
 	c.activeUsersView = activeChatters
+	c.userInputBox = textBox
+
 	c.tuiPages = pages
 	return app
 }
 
 func (c *Client) textViewChangeHandler() {
 	c.TUI.Draw()
+}
+
+func (c *Client) showHomePage() {
+	c.tuiPages.ShowPage("home-page")
+	c.TUI.SetFocus(c.userInputBox)
 }
 
 func createTextView() tview.TextView {
@@ -127,7 +139,7 @@ func createTextView() tview.TextView {
 func createChatLogView() *tview.TextView {
 	chatLog := createTextView()
 	chatLog.SetTitle("  Chat Log  ") //TODO get from config
-	chatLog.SetMaxLines(250)         //TODO get from config //Need to experiment here, see what its like withlimit, without, and if should have scollable or not
+	chatLog.SetMaxLines(250)         //TODO get from config //Need to experiment here, see what its like with limit, without, and if should have scrollable or not
 	chatLog.SetBorder(true)
 	chatLog.SetDynamicColors(true)
 	return &chatLog
@@ -185,6 +197,16 @@ func hostCommandModal() *tview.Modal {
 		sb.WriteString(fmt.Sprintf("  %s - %s\n", cmd.name, cmd.description))
 	}
 
+	modal.SetText(sb.String())
+	return modal
+}
+
+func homeScreenModal(user *ClientConfig) *tview.Modal {
+	modal := tview.NewModal()
+	modal.SetTitle(fmt.Sprintf(" Welcome [%s]%v[white]! ", user.UserColour, user.Username))
+	var sb strings.Builder
+	sb.WriteString("No active Connections\n\n")
+	sb.WriteString("Use \\connect to connect to a server!")
 	modal.SetText(sb.String())
 	return modal
 }

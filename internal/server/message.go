@@ -27,8 +27,8 @@ func (s *Server) ActionMessageType(p encoding.MsgProtocol) error {
 		msg = append(msg, []byte(joined)...)
 		s.SentMessageToClient(toUser, msg)
 	case encoding.RequestDisconnect:
+		s.cfg.Logger.Println("Request disconnect called!")
 		s.CloseConnectionForUser(string(p.Username[:p.UsernameSize]))
-		s.BroadcastActiveUsers()
 	}
 	return fmt.Errorf("could not determine message type. %v", p.MessageType)
 }
@@ -52,8 +52,8 @@ func (s *Server) ActionMessageTypeMultiMessage(p encoding.MsgProtocol, data []by
 		msg = append(msg, []byte(joined)...)
 		s.SentMessageToClient(toUser, msg)
 	case encoding.RequestDisconnect:
+		s.cfg.Logger.Println("Request disconnect called (multiplath)!")
 		s.CloseConnectionForUser(string(p.Username[:p.UsernameSize]))
-		s.BroadcastActiveUsers()
 	}
 	return fmt.Errorf("could not determine message type. %v", p.MessageType)
 }
@@ -69,13 +69,13 @@ func (s *Server) ProcessGroupMessage(sentBy string, msg []byte) {
 }
 
 func (s *Server) AwaitMessage(user ConnectedUser) {
-	defer s.CloseConnection(user)
+	defer s.CloseConnectionForUser(user.userInfo.Username)
 	for {
 		buf := make([]byte, encoding.MaxPacketSize)
 		var data []byte
 
 		nr, err := user.conn.Read(buf)
-		s.cfg.Logger.Printf("Server: nr=%v\n", nr)
+		s.cfg.Logger.Printf("nr=%v\n", nr)
 
 		data = buf[0:nr]
 
@@ -145,11 +145,19 @@ func (s *Server) SendHistory(user ConnectedUser) error {
 	if len(s.MsgHistory) > 0 {
 		s.rwmu.RLock()
 		defer s.rwmu.RUnlock()
+		err := s.SentMessageToClient(user.userInfo.Username, []byte("--- Message History ---\n"))
+		if err != nil {
+			return err
+		}
 		for _, msg := range s.MsgHistory {
 			err := s.SentMessageToClient(user.userInfo.Username, msg)
 			if err != nil {
 				return err
 			}
+		}
+		err = s.SentMessageToClient(user.userInfo.Username, []byte("\n--- New Messages ---\n"))
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -163,4 +171,13 @@ func (s *Server) AddMsgToHistory(msg []byte) {
 
 	}
 	s.MsgHistory = append(s.MsgHistory, msg)
+}
+
+func (s *Server) SendDisconnectionNotification(user ConnectedUser) {
+	toSend, err := encoding.PrepBytesForSending([]byte{}, encoding.RequestDisconnect, s.cfg.ServerName, "white", s.cfg.AESKey)
+	if err != nil {
+		s.cfg.Logger.Printf("error creating packet to send: %v", err)
+	}
+	s.cfg.Logger.Printf("SendDisconnectionNotification: len %v\n", len(toSend))
+	SendMessage(user.conn, toSend)
 }

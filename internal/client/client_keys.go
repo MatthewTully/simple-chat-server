@@ -13,7 +13,7 @@ import (
 func (c *Client) SendHandshake(conn net.Conn) error {
 	pubKeyBytes, err := crypto.RSAPublicKeyToBytes(c.cfg.RSAKeyPair.PublicKey)
 	if err != nil {
-		c.cfg.Logger.Printf("Client: %v", err)
+		c.cfg.Logger.Printf("%v", err)
 		return err
 	}
 	handshake, err := encoding.PrepHandshakeForSending(pubKeyBytes, c.cfg.Username, c.cfg.UserColour)
@@ -23,7 +23,7 @@ func (c *Client) SendHandshake(conn net.Conn) error {
 	c.cfg.Logger.Printf("SendHandshake: len %v\n", len(handshake))
 	_, err = conn.Write(handshake)
 	if err != nil {
-		c.cfg.Logger.Printf("Client: failed to send to server %s: %v\n", conn.RemoteAddr().String(), err)
+		c.cfg.Logger.Printf("failed to send to server %s: %v\n", conn.RemoteAddr().String(), err)
 		return fmt.Errorf("failed to send to server %s: %v", conn.RemoteAddr().String(), err)
 	}
 	return nil
@@ -38,7 +38,7 @@ func (c *Client) SendAESKey(conn net.Conn) error {
 	c.cfg.Logger.Printf("SendAESKey: packet %v\n", packet)
 	_, err = conn.Write(packet)
 	if err != nil {
-		c.cfg.Logger.Printf("Client: failed to send to server %s: %v\n", conn.RemoteAddr().String(), err)
+		c.cfg.Logger.Printf("failed to send to server %s: %v\n", conn.RemoteAddr().String(), err)
 		return fmt.Errorf("failed to send to server %s: %v", conn.RemoteAddr().String(), err)
 	}
 	return nil
@@ -65,7 +65,7 @@ func (c *Client) AwaitHandshakeResponse(conn net.Conn) (encoding.MsgProtocol, er
 		buffer := bytes.NewBuffer(packet)
 		dataPacket := encoding.DecodeMsgPacket(buffer)
 		if dataPacket.MessageType == encoding.RequestConnect {
-			c.cfg.Logger.Print("Client: handshake complete")
+			c.cfg.Logger.Print("handshake complete")
 			return dataPacket, nil
 		}
 	}
@@ -85,8 +85,8 @@ func (c *Client) AwaitServerKey(conn net.Conn) ([]byte, error) {
 			continue
 		}
 		data := buf[0:nr]
-		c.cfg.Logger.Printf("Client: nr=%v\n", nr)
-		c.cfg.Logger.Printf("Client: data=%v\n", data)
+		c.cfg.Logger.Printf("nr=%v\n", nr)
+		c.cfg.Logger.Printf("data=%v\n", data)
 		sd := bytes.Split(data, encoding.HeaderPattern[:])
 		encPacket := sd[1]
 		packetLen := binary.BigEndian.Uint16(encPacket[4:])
@@ -97,17 +97,17 @@ func (c *Client) AwaitServerKey(conn net.Conn) ([]byte, error) {
 
 		decPayload, err := crypto.RSADecrypt(dataPacket.Data[:dataPacket.MsgSize], c.cfg.RSAKeyPair.PrivateKey)
 		if err != nil {
-			c.cfg.Logger.Printf("Client: error Decrypting payload: %v", err)
+			c.cfg.Logger.Printf("error Decrypting payload: %v", err)
 			return nil, err
 		}
 		err = crypto.RSAVerify(decPayload, dataPacket.Sig[:dataPacket.SigSize], c.ServerPubKey)
 		if err != nil {
-			c.cfg.Logger.Printf("Client: error verifying payload: %v", err)
+			c.cfg.Logger.Printf("error verifying payload: %v", err)
 			return nil, err
 		}
 
 		if dataPacket.MessageType == encoding.SendAESKey {
-			c.cfg.Logger.Print("Client: AES Key Received complete")
+			c.cfg.Logger.Print("AES Key Received complete")
 			return decPayload, nil
 		}
 	}

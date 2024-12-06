@@ -84,9 +84,6 @@ func (s *Server) StartListening() {
 				AESKey:        cliAES,
 				multiMessages: make(map[int]encoding.MsgProtocol),
 			}
-			if err != nil {
-				s.DenyConnection(conn, err.Error())
-			}
 			c <- newUser
 		}()
 

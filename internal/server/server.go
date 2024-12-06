@@ -10,6 +10,7 @@ import (
 
 type serverConfig struct {
 	ServerName string
+	HostUser   string
 	Logger     *log.Logger
 	RSAKeyPair crypto.RSAKeys
 	AESKey     []byte
@@ -61,4 +62,8 @@ func NewServer(port string, historySize uint, logger *log.Logger) (Server, error
 		rwmu:              &sync.RWMutex{},
 	}
 	return srv, nil
+}
+
+func (s *Server) SetHostUser(username string) {
+	s.cfg.HostUser = username
 }

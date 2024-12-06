@@ -32,7 +32,7 @@ func (s *Server) AwaitHandshake(conn net.Conn) (encoding.MsgProtocol, error) {
 		buffer := bytes.NewBuffer(packet)
 		dataPacket := encoding.DecodeMsgPacket(buffer)
 		if dataPacket.MessageType == encoding.RequestConnect {
-			s.cfg.Logger.Print("Server: handshake received")
+			s.cfg.Logger.Print("handshake received")
 			return dataPacket, nil
 		}
 	}
@@ -41,7 +41,7 @@ func (s *Server) AwaitHandshake(conn net.Conn) (encoding.MsgProtocol, error) {
 func (s *Server) SendHandshakeResponse(conn net.Conn) error {
 	pubKeyBytes, err := crypto.RSAPublicKeyToBytes(s.cfg.RSAKeyPair.PublicKey)
 	if err != nil {
-		s.cfg.Logger.Printf("Server: %v", err)
+		s.cfg.Logger.Printf("%v", err)
 		return err
 	}
 	handshake, err := encoding.PrepHandshakeForSending(pubKeyBytes, s.cfg.ServerName, "white")
@@ -51,7 +51,7 @@ func (s *Server) SendHandshakeResponse(conn net.Conn) error {
 	s.cfg.Logger.Printf("SendHandshakeResponse: len %v\n", len(handshake))
 	_, err = conn.Write(handshake)
 	if err != nil {
-		s.cfg.Logger.Printf("Server: failed to send to user %s: %v\n", conn.RemoteAddr().String(), err)
+		s.cfg.Logger.Printf("failed to send to user %s: %v\n", conn.RemoteAddr().String(), err)
 		return fmt.Errorf("failed to send to user %s: %v", conn.RemoteAddr().String(), err)
 	}
 	return nil
@@ -66,7 +66,7 @@ func (s *Server) SendAESKey(conn net.Conn, cliPubKey *rsa.PublicKey) error {
 	s.cfg.Logger.Printf("SendAESKey: packet %v\n", packet)
 	_, err = conn.Write(packet)
 	if err != nil {
-		s.cfg.Logger.Printf("Server: failed to send to user %s: %v\n", conn.RemoteAddr().String(), err)
+		s.cfg.Logger.Printf("failed to send to user %s: %v\n", conn.RemoteAddr().String(), err)
 		return fmt.Errorf("failed to send to user %s: %v", conn.RemoteAddr().String(), err)
 	}
 	return nil
@@ -97,17 +97,17 @@ func (s *Server) AwaitClientAESKey(conn net.Conn, cliPubKey *rsa.PublicKey) ([]b
 
 		decPayload, err := crypto.RSADecrypt(dataPacket.Data[:dataPacket.MsgSize], s.cfg.RSAKeyPair.PrivateKey)
 		if err != nil {
-			s.cfg.Logger.Printf("Server: error Decrypting payload: %v", err)
+			s.cfg.Logger.Printf("error Decrypting payload: %v", err)
 			return nil, err
 		}
 		err = crypto.RSAVerify(decPayload, dataPacket.Sig[:dataPacket.SigSize], cliPubKey)
 		if err != nil {
-			s.cfg.Logger.Printf("Server: error verifying payload: %v", err)
+			s.cfg.Logger.Printf("error verifying payload: %v", err)
 			return nil, err
 		}
 
 		if dataPacket.MessageType == encoding.SendAESKey {
-			s.cfg.Logger.Print("Server: AES Key Received complete")
+			s.cfg.Logger.Print("AES Key Received complete")
 			return decPayload, nil
 		}
 	}

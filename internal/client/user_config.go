@@ -25,9 +25,7 @@ func SetupClientConfig(filePath string, manualSet bool) *ClientConfig {
 
 	var cfg ClientConfig
 	if manualSet || (fi.Size() == 0) {
-		// ask user for details
 		cfg.Username, cfg.UserColour = AskUserDetailsCLI()
-		//write file
 		jsonOut, err := json.Marshal(cfg)
 		if err != nil {
 			log.Fatal(err)

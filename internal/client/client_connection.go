@@ -11,7 +11,7 @@ import (
 func (c *Client) Connect(srvAddr string) error {
 	conn, err := net.Dial("tcp", srvAddr)
 	if err != nil {
-		c.cfg.Logger.Printf("Client: Could not connect to %v: %v\n", srvAddr, err)
+		c.cfg.Logger.Printf("Could not connect to %v: %v\n", srvAddr, err)
 		return err
 	}
 

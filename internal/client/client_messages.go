@@ -29,6 +29,13 @@ func (c *Client) ActionMessageType(p encoding.MsgProtocol) {
 		for _, usr := range activeUsr {
 			c.activeUsersView.Write([]byte(usr + "\n"))
 		}
+	case encoding.RequestDisconnect:
+		c.cfg.Logger.Printf("Message type received: Request Disconnect\n")
+		c.ActiveConn.Close()
+		c.chatView.Clear()
+		c.PushToChatView("You have been disconnected.")
+		c.activeUsersView.Clear()
+		c.showHomePage()
 	}
 }
 
@@ -61,12 +68,12 @@ func (c *Client) ProcessMessage() {
 	for {
 		buf := <-c.processChannel
 		nr := len(buf)
-		c.cfg.Logger.Printf("Client: in chan, Buf read = %v\n", buf)
+		c.cfg.Logger.Printf("in chan, Buf read = %v\n", buf)
 		if len(overFlow) > 0 {
-			c.cfg.Logger.Printf("Client: Using overflow\n")
+			c.cfg.Logger.Printf("Using overflow\n")
 			data = append(overFlow, buf[0:nr]...)
 			overFlow = []byte{}
-			c.cfg.Logger.Printf("Client: data with overflow and buf = %v\n", data)
+			c.cfg.Logger.Printf("data with overflow and buf = %v\n", data)
 		} else {
 			data = buf[0:nr]
 		}
@@ -77,22 +84,22 @@ func (c *Client) ProcessMessage() {
 			c.cfg.Logger.Printf("%v: %v\n", i, p)
 			switch {
 			case i == 0 && len(p) > 0:
-				c.cfg.Logger.Println("Client: tail end of the previous message. add to overflow")
+				c.cfg.Logger.Println("tail end of the previous message. add to overflow")
 				overFlow = append(overFlow, p...)
 				continue
 			case i == 1:
 				if len(p) < encoding.AESEncryptHeaderSize {
-					c.cfg.Logger.Printf("Client: packet is not the full message. add to overflow\n")
+					c.cfg.Logger.Printf("packet is not the full message. add to overflow\n")
 					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 					overFlow = append(overFlow, p...)
 					continue
 				}
-				c.cfg.Logger.Printf("Client: decode header\n")
+				c.cfg.Logger.Printf("decode header\n")
 
 				payloadSize := binary.BigEndian.Uint16(p[0:])
 
 				if len(p) < int(payloadSize) {
-					c.cfg.Logger.Printf("Client: packet is not the full message. add to overflow\n")
+					c.cfg.Logger.Printf("packet is not the full message. add to overflow\n")
 					overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 					overFlow = append(overFlow, p...)
 					continue
@@ -100,14 +107,14 @@ func (c *Client) ProcessMessage() {
 				payload := p[encoding.AESEncryptHeaderSize : payloadSize+encoding.AESEncryptHeaderSize]
 
 				if (payloadSize + encoding.AESEncryptHeaderSize) > uint16(nr) {
-					c.cfg.Logger.Printf("Client: add remaining bytes to overflow for next read: %v\n", p[payloadSize+encoding.AESEncryptHeaderSize:])
+					c.cfg.Logger.Printf("add remaining bytes to overflow for next read: %v\n", p[payloadSize+encoding.AESEncryptHeaderSize:])
 					overFlow = p[payloadSize+encoding.AESEncryptHeaderSize:]
 					overFlow = append(overFlow, p[payloadSize+encoding.AESEncryptHeaderSize:]...)
 				}
 
 				decPayload, err := crypto.AESDecrypt(payload, c.ServerAESKey)
 				if err != nil {
-					c.cfg.Logger.Printf("Client: error Decrypting payload: %v", err)
+					c.cfg.Logger.Printf("error Decrypting payload: %v", err)
 					continue
 				}
 
@@ -116,7 +123,7 @@ func (c *Client) ProcessMessage() {
 				packetLen := binary.BigEndian.Uint16(decPayload[4:])
 
 				if len(decPayload) < int(packetLen) {
-					c.cfg.Logger.Printf("Client: error, decrypted payload is not the full message")
+					c.cfg.Logger.Printf("error, decrypted payload is not the full message")
 					continue
 				}
 				packet := decPayload[encoding.HeaderSize : packetLen+encoding.HeaderSize]
@@ -148,7 +155,7 @@ func (c *Client) ProcessMessage() {
 				}
 				continue
 			case i > 1:
-				c.cfg.Logger.Printf("Client: add extra bytes to overflow for next read: %v\n", p[:])
+				c.cfg.Logger.Printf("add extra bytes to overflow for next read: %v\n", p[:])
 				overFlow = append(overFlow, encoding.HeaderPattern[:]...)
 				overFlow = append(overFlow, p...)
 				continue
@@ -167,24 +174,32 @@ func (c *Client) AwaitMessage() {
 		var data []byte
 		conn := c.ActiveConn
 		if conn == nil {
-			continue
+			c.chatView.Clear()
+			c.PushToChatView("Connection has been lost, or no active connection.")
+			c.activeUsersView.Clear()
+			c.showHomePage()
+			return
 		}
 
-		c.cfg.Logger.Printf("Client: Buff before read=%v\n", buf)
+		c.cfg.Logger.Printf("Buff before read=%v\n", buf)
 		nr, err := conn.Read(buf[:])
-		c.cfg.Logger.Printf("Client: nr=%v\n", nr)
+		c.cfg.Logger.Printf("nr=%v\n", nr)
 		data = buf[0:nr]
 		if nr == 0 {
+			conn.Close()
 			return
 		}
 
 		if err != nil {
 			if !strings.Contains(err.Error(), "closed network connection") {
-				c.cfg.Logger.Printf("Client: error reading from conn: %v\n", err)
+				c.cfg.Logger.Printf("error reading from conn: %v\n", err)
 			}
+			c.PushToChatView("Connection has been lost, please try to reconnect.")
+			c.showHomePage()
+			conn.Close()
 			return
 		}
-		c.cfg.Logger.Printf("Client: data read from conn=%v\n", data)
+		c.cfg.Logger.Printf("data read from conn=%v\n", data)
 		c.processChannel <- data
 
 	}
