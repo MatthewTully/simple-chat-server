@@ -8,35 +8,10 @@ import (
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
 
-func (s *Server) ActionMessageType(p encoding.MsgProtocol) error {
+func (s *Server) ActionMessageType(p encoding.MsgProtocol, data []byte) error {
 	switch p.MessageType {
 	case encoding.KeepAlive:
-		//update keep alive so user is not disconnected
-	case encoding.Message:
-		sentBy := string(p.Username[:p.UsernameSize])
-		msg := []byte(fmt.Sprintf("[white]%v[white] [%s]%v ~[white] ", p.DateTime.Format("02/01/06 15:04"), string(p.UserColour[:p.UserColourSize]), sentBy))
-		msg = append(msg, p.Data[:p.MsgSize]...)
-		s.ProcessGroupMessage(sentBy, msg)
-	case encoding.WhisperMessage:
-		sentBy := string(p.Username[:p.UsernameSize])
-		baseMsg := string(p.Data[:p.MsgSize])
-		split := strings.Split(baseMsg, " ")
-		toUser := split[0]
-		msg := []byte(fmt.Sprintf("[white]%v[white] [%s][::i](whispered)[::-] %v ~[white] ", p.DateTime.Format("02/01/06 15:04"), string(p.UserColour[:p.UserColourSize]), sentBy))
-		joined := fmt.Sprintf("[:r:i]%v[:-:-]", strings.Join(split, " "))
-		msg = append(msg, []byte(joined)...)
-		s.SentMessageToClient(toUser, msg)
-	case encoding.RequestDisconnect:
-		s.cfg.Logger.Println("Request disconnect called!")
-		s.CloseConnectionForUser(string(p.Username[:p.UsernameSize]))
-	}
-	return fmt.Errorf("could not determine message type. %v", p.MessageType)
-}
-
-func (s *Server) ActionMessageTypeMultiMessage(p encoding.MsgProtocol, data []byte) error {
-	switch p.MessageType {
-	case encoding.KeepAlive:
-		//update keep alive so user is not disconnected
+		s.ActionKeepAlive(string(p.Username[:p.UsernameSize]))
 	case encoding.Message:
 		sentBy := string(p.Username[:p.UsernameSize])
 		msg := []byte(fmt.Sprintf("[white]%v[white] [%s]%v ~[white] ", p.DateTime.Format("02/01/06 15:04"), string(p.UserColour[:p.UserColourSize]), sentBy))
@@ -52,7 +27,6 @@ func (s *Server) ActionMessageTypeMultiMessage(p encoding.MsgProtocol, data []by
 		msg = append(msg, []byte(joined)...)
 		s.SentMessageToClient(toUser, msg)
 	case encoding.RequestDisconnect:
-		s.cfg.Logger.Println("Request disconnect called (multiplath)!")
 		s.CloseConnectionForUser(string(p.Username[:p.UsernameSize]))
 	}
 	return fmt.Errorf("could not determine message type. %v", p.MessageType)
@@ -68,7 +42,7 @@ func (s *Server) ProcessGroupMessage(sentBy string, msg []byte) {
 	s.BroadcastMessage(sentBy, toSend)
 }
 
-func (s *Server) AwaitMessage(user ConnectedUser) {
+func (s *Server) AwaitMessage(user *ConnectedUser) {
 	defer s.CloseConnectionForUser(user.userInfo.Username)
 	for {
 		buf := make([]byte, encoding.MaxPacketSize)
@@ -90,6 +64,7 @@ func (s *Server) AwaitMessage(user ConnectedUser) {
 			}
 			return
 		}
+		s.ActionKeepAlive(user.userInfo.Username)
 		user.processChannel <- data
 
 	}
@@ -141,7 +116,7 @@ func (s *Server) SentMessageToClient(client string, msg []byte) error {
 	return err
 }
 
-func (s *Server) SendHistory(user ConnectedUser) error {
+func (s *Server) SendHistory(user *ConnectedUser) error {
 	if len(s.MsgHistory) > 0 {
 		s.rwmu.RLock()
 		defer s.rwmu.RUnlock()
@@ -173,7 +148,7 @@ func (s *Server) AddMsgToHistory(msg []byte) {
 	s.MsgHistory = append(s.MsgHistory, msg)
 }
 
-func (s *Server) SendDisconnectionNotification(user ConnectedUser) {
+func (s *Server) SendDisconnectionNotification(user *ConnectedUser) {
 	toSend, err := encoding.PrepBytesForSending([]byte{}, encoding.RequestDisconnect, s.cfg.ServerName, "white", s.cfg.AESKey)
 	if err != nil {
 		s.cfg.Logger.Printf("error creating packet to send: %v", err)

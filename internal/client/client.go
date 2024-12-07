@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"log"
 	"net"
+	"time"
 
 	"github.com/MatthewTully/simple-chat-server/internal/crypto"
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
@@ -12,11 +13,12 @@ import (
 )
 
 type ClientConfig struct {
-	Username     string `json:"username"`
-	UserColour   string `json:"user_colour"`
-	Logger       *log.Logger
-	RSAKeyPair   crypto.RSAKeys
-	ClientAESKey []byte
+	Username      string `json:"username"`
+	UserColour    string `json:"user_colour"`
+	Logger        *log.Logger
+	RSAKeyPair    crypto.RSAKeys
+	ClientAESKey  []byte
+	KeepAlivePing time.Duration
 }
 
 type Client struct {
@@ -35,6 +37,7 @@ type Client struct {
 	userCmdArg      string
 	tuiPages        *tview.Pages
 	userInputBox    *tview.InputField
+	KeepAliveTimer  *time.Ticker
 }
 
 func NewClient(cfg *ClientConfig) Client {

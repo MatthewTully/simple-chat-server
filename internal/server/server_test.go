@@ -111,7 +111,7 @@ func TestConnectionLimits(t *testing.T) {
 				if i < tc.expectedConnections {
 					tc.expectedKeys = append(tc.expectedKeys, fmt.Sprintf("%v", i))
 				}
-				err = srv.AddToLiveConns(fmt.Sprintf("%v", i), ConnectedUser{conn: conn})
+				err = srv.AddToLiveConns(fmt.Sprintf("%v", i), &ConnectedUser{conn: conn})
 				if err != nil {
 					fmt.Println(err)
 				}

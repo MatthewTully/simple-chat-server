@@ -18,7 +18,7 @@ type serverConfig struct {
 
 type Server struct {
 	cfg                *serverConfig
-	LiveConns          map[string]ConnectedUser
+	LiveConns          map[string]*ConnectedUser
 	Listener           net.Listener
 	MsgHistory         [][]byte
 	MaxMsgHistorySize  uint
@@ -54,7 +54,7 @@ func NewServer(port string, historySize uint, logger *log.Logger) (Server, error
 	}
 
 	srv := Server{
-		LiveConns:         make(map[string]ConnectedUser),
+		LiveConns:         make(map[string]*ConnectedUser),
 		Listener:          l,
 		cfg:               &srvCfg,
 		MsgHistory:        [][]byte{},

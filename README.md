@@ -1,7 +1,12 @@
 # simple-chat-server
 A simple chat server built in Go. 
 
-The application can be run as a host server, or a connecting client. Running as a Client is the default mode. 
+The application allows Peer to Peer chat rooms to be setup for simple text based communication. All communication between client and host server is encrypted.
+
+The application can be run as a host server, or a connecting client.  
+One user runs the application as the host and then other users can connect with the hosts IP and port.
+
+Running as a Client is the default mode.
 
 >Server is volatile storage. Message history is lost when pushed from the history buffer, or when the server is shut down. Buffer size is configurable in the settings. When a user joins the server, the history is shared immediately.
 
@@ -25,7 +30,7 @@ On start up the application will look for the user config file. If it does not e
 * Username (Max of 32 Bytes)
 * Username Colour (List of valid values will be displayed)
 
-The user config can be manually triggered on startup from the CLI with the flag `-user-config`. Alternatively, it can be configured within the application using the user command `\user-config`
+The user config can be manually triggered on startup from the CLI with the flag `-user-config`.
 
 To connect to a server, type `\connect { server connection string }`, where `{ server connection string }` is the address of the server you want to connect to. 
 
@@ -51,6 +56,8 @@ Example Commands:
 
 A full list of user commands can be found [here](./docs/user_commands.md)
 
+Entering `\` will trigger the autocomplete feature, which will display a list of available commands. Tab or Enter can be used to select the autocomplete option. The down arrow can be used to cycle options. Continuing to type will filter the list down further.
+
 ## Running the Server
 Run the server with `./simple-chat-server --host` from the CLI to run the application in host mode. This will create a server that others can connect to.
 A port can be specified with the `--port` (or `-p`) flag. This value will override any value provide in the `.env` file for `SRV_PORT`. 
@@ -71,7 +78,8 @@ Once connected and listening for connections, the application will enter client 
 
 ## Dependences 
 
-Env file loading done by -  github.com/joho/godotenv v1.5.1
-Client TUI created using  -  github.com/rivo/tview
+* Go 1.23.0
+* Env file loading done by -  github.com/joho/godotenv v1.5.1
+* Client TUI created using  -  github.com/rivo/tview
 
 

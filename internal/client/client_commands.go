@@ -97,6 +97,7 @@ func disconnectFromServer(c *Client) {
 		c.PushToChatView("No active connections")
 		return
 	}
+	c.KeepAliveTimer.Stop()
 	c.PushToChatView(fmt.Sprintf("Disconnecting from %v", c.ActiveConn.RemoteAddr().String()))
 	c.SendDisconnectionRequest()
 	c.ActiveConn.Close()
@@ -165,6 +166,7 @@ func actionInput(c *Client, usrInput string) {
 	if err != nil {
 		msg := "Could not send message. Please try again."
 		if strings.Contains(err.Error(), "use of closed network connection") {
+			c.KeepAliveTimer.Stop()
 			msg = "Could not send message. Connection to the server has been lost."
 			c.showHomePage()
 		}

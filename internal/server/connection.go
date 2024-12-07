@@ -7,7 +7,7 @@ import (
 	"github.com/MatthewTully/simple-chat-server/internal/encoding"
 )
 
-func (s *Server) AddToLiveConns(userKey string, conn ConnectedUser) error {
+func (s *Server) AddToLiveConns(userKey string, conn *ConnectedUser) error {
 	s.cfg.Logger.Printf("New connection - %s\n", userKey)
 	s.rwmu.Lock()
 	defer s.rwmu.Unlock()
@@ -24,13 +24,13 @@ func (s *Server) AddToLiveConns(userKey string, conn ConnectedUser) error {
 	return nil
 }
 
-func (s *Server) NewConnection(newUser ConnectedUser) (ConnectedUser, error) {
-	err := s.AddToLiveConns(newUser.userInfo.Username, newUser)
+func (s *Server) NewConnection(newUser ConnectedUser) (*ConnectedUser, error) {
+	err := s.AddToLiveConns(newUser.userInfo.Username, &newUser)
 	if err != nil {
-		return ConnectedUser{}, err
+		return &ConnectedUser{}, err
 	}
 	s.BroadcastActiveUsers()
-	err = s.SendHistory(newUser)
+	err = s.SendHistory(&newUser)
 	if err != nil {
 		s.cfg.Logger.Printf("Could not send history to new user (%v): %v", newUser.userInfo.Username, err)
 	}
@@ -39,7 +39,7 @@ func (s *Server) NewConnection(newUser ConnectedUser) (ConnectedUser, error) {
 	if err != nil {
 		s.cfg.Logger.Println(err.Error())
 	}
-	return newUser, nil
+	return &newUser, nil
 }
 
 func (s *Server) DenyConnection(conn net.Conn, errMsg string) {
@@ -55,7 +55,7 @@ func (s *Server) DenyConnection(conn net.Conn, errMsg string) {
 	conn.Close()
 }
 
-func (s *Server) CloseConnection(user ConnectedUser) {
+func (s *Server) CloseConnection(user *ConnectedUser) {
 	s.rwmu.Lock()
 	delete(s.LiveConns, user.userInfo.Username)
 	s.rwmu.Unlock()

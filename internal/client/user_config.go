@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 )
 
 var validColours = []string{"red", "orange", "blue", "green", "yellow", "pink", "purple", "black", "white", "grey"}
@@ -44,6 +45,8 @@ func SetupClientConfig(filePath string, manualSet bool) *ClientConfig {
 			log.Fatal(err)
 		}
 	}
+
+	cfg.KeepAlivePing = time.Duration(5 * time.Second)
 	return &cfg
 }
 
