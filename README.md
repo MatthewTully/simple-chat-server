@@ -76,10 +76,13 @@ Once connected and listening for connections, the application will enter client 
 ```
 
 
-## Dependences 
+## Dependencies 
 
 * Go 1.23.0
 * Env file loading done by -  github.com/joho/godotenv v1.5.1
 * Client TUI created using  -  github.com/rivo/tview
 
 
+## Contributing
+
+If you'd like to contribute, add features, fix issues, etc. feel free to fork the repository, and open a pull request to the `main` branch.
