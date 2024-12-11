@@ -60,6 +60,9 @@ func (c *Client) AwaitHandshakeResponse(conn net.Conn) (encoding.MsgProtocol, er
 		data := buf[0:nr]
 
 		sd := bytes.Split(data, encoding.HeaderPattern[:])
+		if len(sd) == 0 {
+			return encoding.MsgProtocol{}, fmt.Errorf("incorrect Message length")
+		}
 		packetLen := binary.BigEndian.Uint16(sd[1][4:])
 		packet := sd[1][encoding.HeaderSize : packetLen+encoding.HeaderSize]
 		buffer := bytes.NewBuffer(packet)
@@ -88,6 +91,9 @@ func (c *Client) AwaitServerKey(conn net.Conn) ([]byte, error) {
 		c.cfg.Logger.Printf("nr=%v\n", nr)
 		c.cfg.Logger.Printf("data=%v\n", data)
 		sd := bytes.Split(data, encoding.HeaderPattern[:])
+		if len(sd) == 0 {
+			return nil, fmt.Errorf("incorrect Message length")
+		}
 		encPacket := sd[1]
 		packetLen := binary.BigEndian.Uint16(encPacket[4:])
 

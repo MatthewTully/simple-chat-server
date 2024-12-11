@@ -27,6 +27,9 @@ func (s *Server) AwaitHandshake(conn net.Conn) (encoding.MsgProtocol, error) {
 		data := buf[0:nr]
 
 		sd := bytes.Split(data, encoding.HeaderPattern[:])
+		if len(sd) == 0 {
+			return encoding.MsgProtocol{}, fmt.Errorf("incorrect Message length")
+		}
 		packetLen := binary.BigEndian.Uint16(sd[1][4:])
 		packet := sd[1][encoding.HeaderSize : packetLen+encoding.HeaderSize]
 		buffer := bytes.NewBuffer(packet)
@@ -88,6 +91,9 @@ func (s *Server) AwaitClientAESKey(conn net.Conn, cliPubKey *rsa.PublicKey) ([]b
 		data := buf[0:nr]
 
 		sd := bytes.Split(data, encoding.HeaderPattern[:])
+		if len(sd) == 0 {
+			return nil, fmt.Errorf("incorrect Message length")
+		}
 		encPacket := sd[1]
 		packetLen := binary.BigEndian.Uint16(encPacket[4:])
 
